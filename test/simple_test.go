@@ -8,11 +8,7 @@ import (
 )
 
 func simple() {
-	if err := actor.SetNewActorFn("simple_actor", newSimpleActor); err != nil {
-		log.Println(err)
-		return
-	}
-	aRef, err := actor.Spawn("simple_actor")
+	aRef, err := actor.Spawn(constSimpleActor)
 	if err != nil {
 		log.Println(err)
 		return
@@ -23,10 +19,15 @@ func simple() {
 		return
 	}
 	log.Println(aRef)
-	aRef.Tell(nil, "hello world", "extra")
+	aRef.Send(nil, "hello world 1", "extra")
+	log.Println("hello world 1 next line")
+	aRef.Send(nil, "hello world 2", "extra")
+	log.Println("hello world 2 next line")
 }
 
 func TestSimple(t *testing.T) {
 	simple()
+	a := actor.ByName("simple_1")
+	log.Println(a)
 	time.After(time.Second)
 }

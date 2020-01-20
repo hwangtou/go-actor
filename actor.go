@@ -39,7 +39,7 @@ func Spawn(actorType string) (*Ref, error) {
 		return nil, ErrNewActorFnNotFound
 	}
 	a := fn()
-	r := sys.manager.newActor(a)
+	r := sys.manager.addActor(a)
 	if err := a.StartUp(r.id); err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func Spawn(actorType string) (*Ref, error) {
 }
 
 func Register(id *Id, name string) error {
-	return sys.manager.bind(id.id, name)
+	return sys.manager.bindName(id.id, name)
 }
 
 func ById(id uint32) *Ref {
@@ -83,7 +83,8 @@ func ShutDown(id uint32) error {
 	if !has {
 		return ErrIdNotFound
 	}
-	sys.manager.unbind(r)
+	sys.manager.unbindName(r)
+	sys.manager.delActor(id)
 	r.shutdown()
 	return nil
 }
@@ -96,12 +97,12 @@ func ShutDown(id uint32) error {
 // It is the base id interface.
 type Actor interface {
 	StartUp(id uint32) error
-	// The method HandleTell, tell means the message is unidirectional.
+	// The method HandleSend, tell means the message is unidirectional.
 	// Every id should support this method, to handle basic message passing.
-	// Since message passing is thread-safe, method HandleTell and HandleAsk will execute one by one.
+	// Since message passing is thread-safe, method HandleSend and HandleAsk will execute one by one.
 	// So please do not block this method if it is not necessary. Consider making it asynchronous.
 	// TODO: error return types
-	HandleTell(sender *Id, messages ...interface{})
+	HandleSend(sender *Id, messages ...interface{})
 
 	Idle()
 

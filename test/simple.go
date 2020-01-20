@@ -3,9 +3,19 @@ package test
 import (
 	actor "github.com/go-actor"
 	"log"
+	"time"
 )
 
 // SIMPLE ACTOR
+
+const constSimpleActor = "simple_actor"
+
+func init() {
+	if err := actor.SetNewActorFn(constSimpleActor, newSimpleActor); err != nil {
+		log.Println(err)
+		return
+	}
+}
 
 type simpleActor struct {
 	id uint32
@@ -23,7 +33,7 @@ func (m *simpleActor) StartUp(id uint32) error {
 	return nil
 }
 
-func (m *simpleActor) HandleTell(sender *actor.Id, messages ...interface{}) {
+func (m *simpleActor) HandleSend(sender *actor.Id, messages ...interface{}) {
 	log.Printf("received raw:%v", messages)
 	switch msg := messages[0].(type) {
 	case signal:
@@ -35,6 +45,7 @@ func (m *simpleActor) HandleTell(sender *actor.Id, messages ...interface{}) {
 	default:
 		log.Printf("received unknown:%v\n", msg)
 	}
+	<-time.After(time.Second * 1)
 }
 
 func (m *simpleActor) Idle() {

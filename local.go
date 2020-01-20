@@ -18,45 +18,53 @@ var (
 
 type manager struct {
 	actors      map[uint32]*Ref
-	actorIdIter uint32
+	idCount     uint32
+	idCountLock sync.Mutex
 	names       map[string]uint32
 }
 
 func (m *manager) init() {
 	m.actors = map[uint32]*Ref{}
-	m.actorIdIter = 1
+	m.idCount = 1
+	m.idCountLock = sync.Mutex{}
 	m.names = map[string]uint32{}
 }
 
-func (m *manager) nextId() uint32 {
+func (m *manager) addActor(a Actor) *Ref {
+	m.idCountLock.Lock()
+	defer m.idCountLock.Unlock()
+
 	for {
-		if m.actorIdIter == 0 {
-			m.actorIdIter += 1
+		if m.idCount == 0 {
+			m.idCount += 1
 		}
-		if _, has := m.actors[m.actorIdIter]; !has {
+		if _, has := m.actors[m.idCount]; !has {
 			break
 		}
-		m.actorIdIter += 1
+		m.idCount += 1
 	}
-	return m.actorIdIter
-}
-
-func (m *manager) newActor(a Actor) *Ref {
-	id := m.nextId()
 	r := &Ref{
 		node:      0,
-		id:        id,
+		id:        m.idCount,
 		name:      "",
 		actor:     a,
 		actorLock: sync.Mutex{},
 		count:     1,
 		countLock: sync.Mutex{},
+		sequence: 1,
 	}
-	m.actors[id] = r
+	m.actors[m.idCount] = r
 	return r
 }
 
-func (m *manager) bind(id uint32, name string) error {
+func (m *manager) delActor(id uint32) {
+	m.idCountLock.Lock()
+	defer m.idCountLock.Unlock()
+
+	delete(m.actors, id)
+}
+
+func (m *manager) bindName(id uint32, name string) error {
 	if name == "" {
 		return ErrActorName
 	}
@@ -73,7 +81,7 @@ func (m *manager) bind(id uint32, name string) error {
 	return nil
 }
 
-func (m *manager) unbind(r *Ref) {
+func (m *manager) unbindName(r *Ref) {
 	if r.name != "" {
 		delete(m.names, r.name)
 		r.name = ""
@@ -92,6 +100,7 @@ type Ref struct {
 	actorLock sync.Mutex
 	count     int
 	countLock sync.Mutex
+	sequence  uint64
 }
 
 func (m *Ref) Id() *Id {
@@ -102,15 +111,26 @@ func (m *Ref) Id() *Id {
 	}
 }
 
-func (m *Ref) Tell(sender *Id, message ...interface{}) (err error) {
+func (m *Ref) Send(sender *Id, messages ...interface{}) (err error) {
 	m.actorLock.Lock()
-	defer m.actorLock.Unlock()
-
 	if m.actor == nil {
+		defer m.actorLock.Unlock()
 		return ErrActorHalt
 	}
-	go m.actor.HandleTell(sender, message...)
+	go func(sender *Id, messages ...interface{}) {
+		defer m.actorLock.Unlock()
+		m.handleMessage(&message{
+			sender:   sender,
+			sequence: m.sequence,
+			messages: messages,
+		})
+	}(sender, messages...)
 	return nil
+}
+
+func (m *Ref) handleMessage(msg *message) {
+	// TODO track running time
+	m.actor.HandleSend(msg.sender, msg.messages...)
 }
 
 func (m *Ref) Release() {
@@ -143,6 +163,7 @@ func (m *Ref) shutdown() {
 //
 
 type message struct {
+	sender *Id
 	sequence uint64
 	messages []interface{}
 }
