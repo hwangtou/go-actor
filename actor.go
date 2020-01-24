@@ -12,7 +12,7 @@ var (
 
 func init() {
 	sys.creators = map[string]NewActorFn{}
-	sys.manager.init()
+	sys.local.init()
 	log.Println(sys)
 }
 
@@ -20,7 +20,7 @@ var sys system
 
 type system struct {
 	creators map[string]NewActorFn
-	manager  manager
+	local    locals
 }
 
 func SetNewActorFn(actorType string, fn NewActorFn) error {
@@ -33,60 +33,24 @@ func UnSetNewActorFn(actorType string) error {
 	return nil
 }
 
-func Spawn(actorType string) (*Ref, error) {
-	fn, has := sys.creators[actorType]
-	if !has {
-		return nil, ErrNewActorFnNotFound
-	}
-	a := fn()
-	r := sys.manager.addActor(a)
-	if err := a.StartUp(r.id); err != nil {
-		return nil, err
-	}
-	return r, nil
+func Spawn(actorType string, arg interface{}) (*LocalRef, error) {
+	return sys.local.spawnActor(actorType, arg)
 }
 
-func Register(id *Id, name string) error {
-	return sys.manager.bindName(id.id, name)
+func Register(id uint32, name string) error {
+	return sys.local.bindName(id, name)
 }
 
-func ById(id uint32) *Ref {
-	r, has := sys.manager.actors[id]
-	if !has {
-		return nil
-	}
-
-	r.countLock.Lock()
-	defer r.countLock.Unlock()
-	r.count += 1
-	return r
+func ById(id uint32) *LocalRef {
+	return sys.local.getActor(id)
 }
 
-func ByName(name string) *Ref {
-	id, has := sys.manager.names[name]
-	if !has {
-		return nil
-	}
-	r, has := sys.manager.actors[id]
-	if !has {
-		return nil
-	}
-
-	r.countLock.Lock()
-	defer r.countLock.Unlock()
-	r.count += 1
-	return r
+func ByName(name string) *LocalRef {
+	return sys.local.getName(name)
 }
 
 func ShutDown(id uint32) error {
-	r, has := sys.manager.actors[id]
-	if !has {
-		return ErrIdNotFound
-	}
-	sys.manager.unbindName(r)
-	sys.manager.delActor(id)
-	r.shutdown()
-	return nil
+	return sys.local.shutdownActor(id)
 }
 
 // ACTOR
@@ -96,13 +60,13 @@ func ShutDown(id uint32) error {
 // Interface Actor
 // It is the base id interface.
 type Actor interface {
-	StartUp(id uint32) error
+	StartUp(self Ref, arg interface{}) error
 	// The method HandleSend, tell means the message is unidirectional.
 	// Every id should support this method, to handle basic message passing.
 	// Since message passing is thread-safe, method HandleSend and HandleAsk will execute one by one.
 	// So please do not block this method if it is not necessary. Consider making it asynchronous.
 	// TODO: error return types
-	HandleSend(sender *Id, messages ...interface{})
+	HandleSend(sender Ref, message interface{})
 
 	Idle()
 
@@ -115,6 +79,39 @@ type Actor interface {
 	Shutdown() error
 }
 
+type ActorAsk interface {
+	HandleAsk(sender Ref, message interface{}) (reply interface{}, err error)
+}
+
 // Function Type that Create Actor
 // Provided by developer.
 type NewActorFn = func() Actor
+
+type Ref interface {
+	Id() *Id
+	Send(sender Ref, message interface{}) error
+	Ask(sender Ref, message interface{}) (reply interface{}, err error)
+	Retain()
+	Release()
+}
+
+//
+// Id
+//
+
+type Id struct {
+	node, id uint32
+	name     string
+}
+
+func (m *Id) NodeId() uint32 {
+	return m.node
+}
+
+func (m *Id) ActorId() uint32 {
+	return m.id
+}
+
+func (m *Id) Name() string {
+	return m.name
+}

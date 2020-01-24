@@ -8,29 +8,48 @@ import (
 
 var (
 	ErrIdNotFound = errors.New("id not found")
-	ErrActorHalt  = errors.New("id halt")
-	ErrActorName  = errors.New("id name error")
+	ErrActorHalt  = errors.New("actor halt")
+	ErrActorName  = errors.New("actor name error")
+	ErrActorCannotAsk = errors.New("actor cannot ask")
 )
 
 //
-// Manager
+// Locals
 //
 
-type manager struct {
-	actors      map[uint32]*Ref
+type locals struct {
+	actors      map[uint32]*LocalRef
 	idCount     uint32
 	idCountLock sync.Mutex
 	names       map[string]uint32
+	namesLock   sync.RWMutex
 }
 
-func (m *manager) init() {
-	m.actors = map[uint32]*Ref{}
+func (m *locals) init() {
+	m.actors = map[uint32]*LocalRef{}
 	m.idCount = 1
 	m.idCountLock = sync.Mutex{}
 	m.names = map[string]uint32{}
+	m.namesLock = sync.RWMutex{}
 }
 
-func (m *manager) addActor(a Actor) *Ref {
+// actors
+
+func (m *locals) spawnActor(actorType string, arg interface{}) (*LocalRef, error) {
+	fn, has := sys.creators[actorType]
+	if !has {
+		return nil, ErrNewActorFnNotFound
+	}
+	a := fn()
+	r := m.addActor(a)
+	if err := a.StartUp(r, arg); err != nil {
+		m.delActor(r.id)
+		return nil, err
+	}
+	return r, nil
+}
+
+func (m *locals) addActor(a Actor) *LocalRef {
 	m.idCountLock.Lock()
 	defer m.idCountLock.Unlock()
 
@@ -43,7 +62,7 @@ func (m *manager) addActor(a Actor) *Ref {
 		}
 		m.idCount += 1
 	}
-	r := &Ref{
+	r := &LocalRef{
 		node:      0,
 		id:        m.idCount,
 		name:      "",
@@ -57,14 +76,40 @@ func (m *manager) addActor(a Actor) *Ref {
 	return r
 }
 
-func (m *manager) delActor(id uint32) {
+func (m *locals) getActor(id uint32) *LocalRef {
+	r, has := m.actors[id]
+	if !has {
+		return nil
+	}
+
+	r.addCount()
+	return r
+}
+
+func (m *locals) delActor(id uint32) {
 	m.idCountLock.Lock()
 	defer m.idCountLock.Unlock()
 
 	delete(m.actors, id)
 }
 
-func (m *manager) bindName(id uint32, name string) error {
+func (m *locals) shutdownActor(id uint32) error {
+	r, has := m.actors[id]
+	if !has {
+		return ErrIdNotFound
+	}
+	m.unbindName(r)
+	m.delActor(id)
+	r.shutdown()
+	return nil
+}
+
+// names
+
+func (m *locals) bindName(id uint32, name string) error {
+	m.namesLock.Lock()
+	defer m.namesLock.Unlock()
+
 	if name == "" {
 		return ErrActorName
 	}
@@ -81,18 +126,38 @@ func (m *manager) bindName(id uint32, name string) error {
 	return nil
 }
 
-func (m *manager) unbindName(r *Ref) {
+func (m *locals) unbindName(r *LocalRef) {
+	m.namesLock.Lock()
+	defer m.namesLock.Unlock()
+
 	if r.name != "" {
 		delete(m.names, r.name)
 		r.name = ""
 	}
 }
 
+func (m *locals) getName(name string) *LocalRef {
+	m.namesLock.RLock()
+	defer m.namesLock.RUnlock()
+
+	id, has := m.names[name]
+	if !has {
+		return nil
+	}
+	r, has := m.actors[id]
+	if !has {
+		return nil
+	}
+
+	r.addCount()
+	return r
+}
+
 //
-// Ref
+// LocalRef
 //
 
-type Ref struct {
+type LocalRef struct {
 	node      uint32
 	id        uint32
 	name      string
@@ -103,37 +168,85 @@ type Ref struct {
 	sequence  uint64
 }
 
-func (m *Ref) Id() *Id {
+func (m *LocalRef) Id() *Id {
 	return &Id{
 		node: m.node,
 		id:   m.id,
-		name: "",
+		name: m.name,
 	}
 }
 
-func (m *Ref) Send(sender *Id, messages ...interface{}) (err error) {
+func (m *LocalRef) Send(sender Ref, messages interface{}) (err error) {
 	m.actorLock.Lock()
+	defer m.actorLock.Unlock()
+
 	if m.actor == nil {
-		defer m.actorLock.Unlock()
 		return ErrActorHalt
 	}
-	go func(sender *Id, messages ...interface{}) {
-		defer m.actorLock.Unlock()
-		m.handleMessage(&message{
-			sender:   sender,
-			sequence: m.sequence,
-			messages: messages,
-		})
-	}(sender, messages...)
+	m.sending(&message{
+		sender:     sender,
+		sequence:   m.sequence,
+		msgType:    msgTypeSend,
+		msgContent: messages,
+	})
 	return nil
 }
 
-func (m *Ref) handleMessage(msg *message) {
-	// TODO track running time
-	m.actor.HandleSend(msg.sender, msg.messages...)
+func (m *LocalRef) Ask(sender Ref, messages interface{}) (interface{}, error) {
+	m.actorLock.Lock()
+	defer m.actorLock.Unlock()
+
+	if m.actor == nil {
+		return nil, ErrActorHalt
+	}
+	reply := m.asking(&message{
+		sender:     sender,
+		sequence:   m.sequence,
+		msgType:    msgTypeAsk,
+		msgContent: messages,
+	})
+	return reply.msgContent, reply.msgError
 }
 
-func (m *Ref) Release() {
+func (m *LocalRef) sending(msg *message) {
+	// TODO track running time
+	m.actor.HandleSend(msg.sender, msg.msgContent)
+}
+
+func (m *LocalRef) asking(msg *message) *message {
+	// TODO track running time
+	a, ok := m.actor.(ActorAsk)
+	if !ok {
+		return &message{
+			sender:     msg.sender,
+			sequence:   msg.sequence,
+			msgType:    msg.msgType,
+			msgContent: msg.msgContent,
+			msgError:   ErrActorCannotAsk,
+		}
+	}
+	replies, err := a.HandleAsk(msg.sender, msg.msgContent)
+	return &message{
+		sender:     m,
+		sequence:   msg.sequence,
+		msgType:    msg.msgType,
+		msgContent: replies,
+		msgError:   err,
+	}
+}
+
+func (m *LocalRef) addCount() {
+	m.countLock.Lock()
+	defer m.countLock.Unlock()
+
+	m.count++
+}
+
+func (m *LocalRef) Retain() {
+	m.addCount()
+}
+
+func (m *LocalRef) Release() {
 	m.countLock.Lock()
 	defer m.countLock.Unlock()
 
@@ -145,7 +258,7 @@ func (m *Ref) Release() {
 	}
 }
 
-func (m *Ref) shutdown() {
+func (m *LocalRef) shutdown() {
 	m.actorLock.Lock()
 	defer m.actorLock.Unlock()
 
@@ -156,31 +269,4 @@ func (m *Ref) shutdown() {
 		log.Println(err)
 	}
 	m.actor = nil
-}
-
-//
-// message
-//
-
-type message struct {
-	sender *Id
-	sequence uint64
-	messages []interface{}
-}
-
-//
-// Id
-//
-
-type Id struct {
-	node, id uint32
-	name     string
-}
-
-func (m *Id) NodeId() uint32 {
-	return m.node
-}
-
-func (m *Id) ActorId() uint32 {
-	return m.id
 }

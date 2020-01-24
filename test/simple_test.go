@@ -14,14 +14,14 @@ func simple() {
 		return
 	}
 	defer aRef.Release()
-	if err := actor.Register(aRef.Id(), "simple_1"); err != nil {
+	if err := actor.Register(aRef.Id().ActorId(), "simple_1"); err != nil {
 		log.Println(err)
 		return
 	}
 	log.Println(aRef)
-	aRef.Send(nil, "hello world 1", "extra")
+	aRef.Send(nil, "hello world 1")
 	log.Println("hello world 1 next line")
-	aRef.Send(nil, "hello world 2", "extra")
+	aRef.Send(nil, "hello world 2")
 	log.Println("hello world 2 next line")
 }
 

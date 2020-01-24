@@ -18,7 +18,7 @@ func init() {
 }
 
 type simpleActor struct {
-	id uint32
+	self actor.Ref
 }
 
 type signal int
@@ -27,15 +27,17 @@ func newSimpleActor() actor.Actor {
 	return &simpleActor{}
 }
 
-func (m *simpleActor) StartUp(id uint32) error {
-	log.Printf("start up id:%v\n", id)
-	m.id = id
+func (m *simpleActor) StartUp(self actor.Ref, arg interface{}) error {
+	log.Printf("start up id:%v\n", self.Id())
+	m.self = self
 	return nil
 }
 
-func (m *simpleActor) HandleSend(sender *actor.Id, messages ...interface{}) {
-	log.Printf("received raw:%v", messages)
-	switch msg := messages[0].(type) {
+func (m *simpleActor) HandleSend(sender actor.Ref, message interface{}) {
+	log.Printf("received raw:%v", message)
+	switch msg := message.(type) {
+	case *simpleActorMessage:
+		log.Printf("received message:%v from %v\n", msg, sender)
 	case signal:
 		log.Printf("received signal:%v from %v\n", msg, sender)
 	case string:
@@ -50,10 +52,10 @@ func (m *simpleActor) HandleSend(sender *actor.Id, messages ...interface{}) {
 
 func (m *simpleActor) Idle() {
 	log.Println("idle, to shutdown")
-	if err := actor.ShutDown(m.id); err != nil {
+	if err := actor.ShutDown(m.self.Id().ActorId()); err != nil {
 		log.Println(err)
 	}
-	if err := actor.ShutDown(m.id); err != nil {
+	if err := actor.ShutDown(m.self.Id().ActorId()); err != nil {
 		log.Println(err)
 	}
 }
@@ -61,4 +63,7 @@ func (m *simpleActor) Idle() {
 func (m *simpleActor) Shutdown() error {
 	log.Println("shutdown")
 	return nil
+}
+
+type simpleActorMessage struct {
 }
