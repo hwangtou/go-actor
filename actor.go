@@ -49,10 +49,6 @@ func ByName(name string) *LocalRef {
 	return sys.local.getName(name)
 }
 
-func ShutDown(id uint32) error {
-	return sys.local.shutdownActor(id)
-}
-
 // ACTOR
 // to create an id, construct a struct type that implement Actor and ActorCanAsk interfaces.
 // You can not and should not manipulate id directly, because it might destroy atomicity.
@@ -68,8 +64,6 @@ type Actor interface {
 	// TODO: error return types
 	HandleSend(sender Ref, message interface{})
 
-	Idle()
-
 	// Dump()
 
 	// Actor System help you to manage your actors, each id has a reference counter, when the counter
@@ -79,8 +73,16 @@ type Actor interface {
 	Shutdown() error
 }
 
+type ActorStatus int
+const (
+	ActorHalt ActorStatus = 0
+	ActorStartingUp ActorStatus = 1
+	ActorRunning ActorStatus = 2
+	ActorShuttingDown ActorStatus = 3
+)
+
 type ActorAsk interface {
-	HandleAsk(sender Ref, message interface{}) (reply interface{}, err error)
+	HandleAsk(sender Ref, ask interface{}) (answer interface{}, err error)
 }
 
 // Function Type that Create Actor
@@ -88,11 +90,11 @@ type ActorAsk interface {
 type NewActorFn = func() Actor
 
 type Ref interface {
-	Id() *Id
-	Send(sender Ref, message interface{}) error
-	Ask(sender Ref, message interface{}) (reply interface{}, err error)
-	Retain()
-	Release()
+	Id() Id
+	Send(sender Ref, msg interface{}) error
+	Ask(sender Ref, ask interface{}) (answer interface{}, err error)
+	Shutdown(sender Ref) error
+	answer(reply message)
 }
 
 //
@@ -104,14 +106,14 @@ type Id struct {
 	name     string
 }
 
-func (m *Id) NodeId() uint32 {
+func (m Id) NodeId() uint32 {
 	return m.node
 }
 
-func (m *Id) ActorId() uint32 {
+func (m Id) ActorId() uint32 {
 	return m.id
 }
 
-func (m *Id) Name() string {
+func (m Id) Name() string {
 	return m.name
 }

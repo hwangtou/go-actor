@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	actor "github.com/go-actor"
 	"log"
 	"time"
@@ -35,29 +36,29 @@ func (m *simpleActor) StartUp(self actor.Ref, arg interface{}) error {
 
 func (m *simpleActor) HandleSend(sender actor.Ref, message interface{}) {
 	log.Printf("received raw:%v", message)
+	senderId := "nil"
+	if sender != nil {
+		id := sender.Id()
+		senderId = fmt.Sprintf("%d:%d:%s", id.NodeId(), id.ActorId(), id.Name())
+	}
 	switch msg := message.(type) {
 	case *simpleActorMessage:
-		log.Printf("received message:%v from %v\n", msg, sender)
+		log.Printf("received message:%v from %v\n", msg, senderId)
 	case signal:
-		log.Printf("received signal:%v from %v\n", msg, sender)
+		log.Printf("received signal:%v from %v\n", msg, senderId)
 	case string:
-		log.Printf("received string:%v from %v\n", msg, sender)
+		log.Printf("received string:%v from %v\n", msg, senderId)
 	case error:
-		log.Printf("received error:%v from %v\n", msg, sender)
+		log.Printf("received error:%v from %v\n", msg, senderId)
 	default:
 		log.Printf("received unknown:%v\n", msg)
 	}
 	<-time.After(time.Second * 1)
 }
 
-func (m *simpleActor) Idle() {
-	log.Println("idle, to shutdown")
-	if err := actor.ShutDown(m.self.Id().ActorId()); err != nil {
-		log.Println(err)
-	}
-	if err := actor.ShutDown(m.self.Id().ActorId()); err != nil {
-		log.Println(err)
-	}
+func (m *simpleActor) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
+	log.Printf("received ask:%v\n", ask)
+	return nil, nil
 }
 
 func (m *simpleActor) Shutdown() error {
