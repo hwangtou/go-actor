@@ -9,15 +9,6 @@ import (
 
 // SIMPLE ACTOR
 
-const constSimpleActor = "simple_actor"
-
-func init() {
-	if err := actor.SetNewActorFn(constSimpleActor, newSimpleActor); err != nil {
-		log.Println(err)
-		return
-	}
-}
-
 type simpleActor struct {
 	self actor.Ref
 }
@@ -32,6 +23,10 @@ func (m *simpleActor) StartUp(self actor.Ref, arg interface{}) error {
 	log.Printf("start up id:%v\n", self.Id())
 	m.self = self
 	return nil
+}
+
+func (m *simpleActor) Started() {
+	log.Printf("started id:%v\n", m.self.Id())
 }
 
 func (m *simpleActor) HandleSend(sender actor.Ref, message interface{}) {
@@ -58,12 +53,11 @@ func (m *simpleActor) HandleSend(sender actor.Ref, message interface{}) {
 
 func (m *simpleActor) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	log.Printf("received ask:%v\n", ask)
-	return nil, nil
+	return "ANSWER", nil
 }
 
-func (m *simpleActor) Shutdown() error {
+func (m *simpleActor) Shutdown() {
 	log.Println("shutdown")
-	return nil
 }
 
 type simpleActorMessage struct {

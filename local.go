@@ -8,10 +8,11 @@ import (
 )
 
 var (
-	ErrIdNotFound      = errors.New("id not found")
-	ErrActorNotRunning = errors.New("actor halt")
-	ErrActorName       = errors.New("actor name error")
+	ErrActorNotRunning = errors.New("actor has halt")
+	ErrActorState      = errors.New("actor state error")
+	ErrArgument        = errors.New("argument error")
 	ErrActorCannotAsk  = errors.New("actor cannot ask")
+	ErrNameRegistered  = errors.New("name registered")
 )
 
 const (
@@ -26,21 +27,21 @@ type locals struct {
 	actors      map[uint32]*LocalRef
 	idCount     uint32
 	idCountLock sync.Mutex
-	names       map[string]uint32
+	names       map[string]nameWrapper
 	namesLock   sync.RWMutex
+	sessions    sessionManager
 }
 
 func (m *locals) init() {
 	m.actors = map[uint32]*LocalRef{}
 	m.idCount = 0
-	m.idCountLock = sync.Mutex{}
-	m.names = map[string]uint32{}
-	m.namesLock = sync.RWMutex{}
+	m.names = map[string]nameWrapper{}
+	m.sessions.init()
 }
 
-// actors
+// actor reference
 
-func (m *locals) addActor(a Actor) *LocalRef {
+func (m *locals) newActorRef(a Actor) *LocalRef {
 	m.idCountLock.Lock()
 	defer m.idCountLock.Unlock()
 
@@ -59,7 +60,7 @@ func (m *locals) addActor(a Actor) *LocalRef {
 	return r
 }
 
-func (m *locals) getActor(id uint32) *LocalRef {
+func (m *locals) getActorRef(id uint32) *LocalRef {
 	r, has := m.actors[id]
 	if !has {
 		return nil
@@ -68,7 +69,7 @@ func (m *locals) getActor(id uint32) *LocalRef {
 	return r
 }
 
-func (m *locals) delActor(id uint32) {
+func (m *locals) delActorRef(id uint32) {
 	m.idCountLock.Lock()
 	defer m.idCountLock.Unlock()
 
@@ -77,62 +78,142 @@ func (m *locals) delActor(id uint32) {
 
 // actors life cycles
 
-func (m *locals) spawnActor(actorType string, arg interface{}) (*LocalRef, error) {
-	fn, has := sys.creators[actorType]
-	if !has {
-		return nil, ErrNewActorFnNotFound
-	}
+func (m *locals) spawnActor(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
+	// #1 create actor with constructor function
 	a := fn()
-	r := m.addActor(a)
-	r.setStatusLock(ActorStartingUp)
-	if err := a.StartUp(r, arg); err != nil {
-		m.delActor(r.id.id)
+	// #2 new actor reference to hold created actor
+	r := m.newActorRef(a)
+	// #3 try starting up, lock the name if necessary
+	if err := m.setNameSpawn(r, name, ActorStartingUp); err != nil {
 		return nil, err
 	}
+	r.setStatus(ActorStartingUp)
+	if err := a.StartUp(r, arg); err != nil {
+		m.unsetNameSpawn(r, name, ActorHalt)
+		m.delActorRef(r.id.id)
+		return nil, ErrNameRegistered
+	}
+	// #4 set running
+	r.setStatus(ActorRunning)
+	if err := m.setNameSpawn(r, name, ActorRunning); err != nil {
+		m.unsetNameSpawn(r, name, ActorHalt)
+		m.delActorRef(r.id.id)
+		return nil, ErrActorState
+	}
+	// #5 SPAWN!!!
 	go r.spawn()
 	return r, nil
 }
 
-func (m *locals) shutdownActor(ref *LocalRef) {
-	// TODO to process global state
-}
-
-func (m *locals) haltActor(ref *LocalRef) {
-	// TODO to process global state
-	m.unbindName(ref)
-	m.delActor(ref.id.id)
+func (m *locals) shutdownActor(r *LocalRef) {
+	name := r.id.name
+	// #1 shutting down
+	m.unsetNameSpawn(r, name, ActorShuttingDown)
+	r.setStatus(ActorShuttingDown)
+	close(r.recvCh)
+	r.actor.Shutdown()
+	r.actor = nil
+	m.delActorRef(r.id.id)
+	// #2 halt
+	m.unsetNameSpawn(r, name, ActorHalt)
+	r.setStatus(ActorHalt)
 }
 
 // names
 
-func (m *locals) bindName(id uint32, name string) error {
-	m.namesLock.Lock()
-	defer m.namesLock.Unlock()
-
-	if name == "" {
-		return ErrActorName
-	}
-	r, has := m.actors[id]
-	if !has {
-		return ErrIdNotFound
-	}
-	_, has = m.names[name]
-	if has {
-		return ErrActorNameExisted
-	}
-	r.id.name = name
-	m.names[name] = id
-	return nil
+type nameWrapper struct {
+	id        uint32
+	state     ActorStatus
+	updatedAt time.Time
 }
 
-func (m *locals) unbindName(r *LocalRef) {
+func (m *locals) setNameSpawn(ref *LocalRef, name string, status ActorStatus) error {
+	if name == "" {
+		return nil
+	}
+
 	m.namesLock.Lock()
 	defer m.namesLock.Unlock()
 
-	if r.id.name != "" {
-		delete(m.names, r.id.name)
-		r.id.name = ""
+	n, has := m.names[name]
+	switch status {
+	case ActorStartingUp:
+		{
+			// this branch will execute when actor is spawning with a name
+			if has && n.state != ActorHalt {
+				return ErrActorState
+			}
+			m.names[name] = nameWrapper{
+				id:        ref.id.id,
+				state:     status,
+				updatedAt: time.Now(),
+			}
+			return nil
+		}
+	case ActorRunning:
+		{
+			ref.id.name = name
+			m.names[name] = nameWrapper{
+				id: ref.id.id,
+				state: status,
+				updatedAt: time.Now(),
+			}
+			return nil
+		}
 	}
+	log.Panicf("set unsupported actor state:%v", status)
+	return ErrActorState
+}
+
+func (m *locals) unsetNameSpawn(ref *LocalRef, name string, status ActorStatus) {
+	if name == "" {
+		return
+	}
+	if status != ActorShuttingDown && status != ActorHalt {
+		log.Panicf("unset unsupported actor state:%v", status)
+	}
+
+	m.namesLock.Lock()
+	defer m.namesLock.Unlock()
+
+	_, has := m.names[name]
+	if !has {
+		return
+	}
+	ref.id.name = ""
+	m.names[name] = nameWrapper{
+		id: 0,
+		state: status,
+		updatedAt: time.Now(),
+	}
+	return
+}
+
+func (m *locals) setNameRunning(ref *LocalRef, name string) error {
+	if ref == nil || name == "" {
+		return ErrArgument
+	}
+	if !ref.checkStatus(ActorRunning) {
+		return ErrActorNotRunning
+	}
+	if ref.id.name != "" {
+		return ErrNameRegistered
+	}
+
+	m.namesLock.Lock()
+	defer m.namesLock.Unlock()
+
+	n, has := m.names[name]
+	if has && n.state != ActorHalt {
+		return ErrActorState
+	}
+	ref.id.name = name
+	m.names[name] = nameWrapper{
+		id:        ref.id.id,
+		state:     ActorRunning,
+		updatedAt: time.Now(),
+	}
+	return nil
 }
 
 func (m *locals) getName(name string) *LocalRef {
@@ -143,7 +224,10 @@ func (m *locals) getName(name string) *LocalRef {
 	if !has {
 		return nil
 	}
-	r, has := m.actors[id]
+	if id.state != ActorRunning {
+		return nil
+	}
+	r, has := m.actors[id.id]
 	if !has {
 		return nil
 	}
@@ -156,14 +240,15 @@ func (m *locals) getName(name string) *LocalRef {
 //
 
 type LocalRef struct {
-	id         Id
-	status     ActorStatus
-	statusLock sync.RWMutex
-	actor      Actor
-	receiver   chan message
-	executeAt  time.Time
-	// sequence number counter
-	sequence sequence
+	id          Id
+	status      ActorStatus
+	statusLock  sync.RWMutex
+	actor       Actor
+	ask         ActorAsk
+	recvCh      chan message
+	recvRunning bool
+	recvBeginAt time.Time
+	recvEndAt   time.Time
 }
 
 func (m *LocalRef) init(id uint32, a Actor, bufSize int) {
@@ -173,17 +258,14 @@ func (m *LocalRef) init(id uint32, a Actor, bufSize int) {
 		name: "",
 	}
 	m.status = ActorHalt
-	m.statusLock = sync.RWMutex{}
 	m.actor = a
-	m.receiver = make(chan message, bufSize)
-	m.executeAt = time.Time{}
 	if ask, ok := a.(ActorAsk); ok {
-		m.sequence.ask = ask
-		m.sequence.sequences = map[uint64]sequenceWrapper{}
+		m.ask = ask
 	}
+	m.recvCh = make(chan message, bufSize)
 }
 
-func (m *LocalRef) setStatusLock(status ActorStatus) {
+func (m *LocalRef) setStatus(status ActorStatus) {
 	m.statusLock.Lock()
 	m.status = status
 	m.statusLock.Unlock()
@@ -196,79 +278,52 @@ func (m *LocalRef) checkStatus(status ActorStatus) bool {
 	return equal
 }
 
+// TODO
 func (m *LocalRef) logMessageError(err error, msg message) {
 }
 
 func (m *LocalRef) spawn() {
-	m.setStatusLock(ActorRunning)
+	m.actor.Started()
 	for {
-		msg := <-m.receiver
-		m.executeAt = time.Now()
-		log.Println(msg)
+		// fetch new message
+		msg := <-m.recvCh
+		// mark recv time
+		m.recvBeginAt = time.Now()
+		m.recvRunning = true
+		// handle
 		switch msg.msgType {
 		case msgTypeSend:
 			m.actor.HandleSend(msg.sender, msg.msgContent)
 		case msgTypeAsk:
-			{
-				// 1.Ask-Reply 2.Ask-Answer
-				switch {
-				case !msg.isReply && m.sequence.ask != nil:
-					log.Println(m.id.name, ">>>>>>>>>>ask-reply", msg.sequence, m.sequence.sequences)
-					answer, err := m.sequence.ask.HandleAsk(msg.sender, msg.msgContent)
-					// TODO should I do this like that?
-					go m.answer(message{
-						sender:     msg.sender,
-						ask:        m,
-						sequence:   msg.sequence,
-						msgType:    msgTypeAsk,
-						msgContent: answer,
-						msgError:   err,
-						isReply:    true,
-					})
-				case msg.isReply:
-					log.Println(m.id.name, ">>>>>>>>>>ask-answer", msg.sequence, m.sequence.sequences)
-					w := m.sequence.getId(msg.sequence)
-					if w == nil {
-						// TODO
-						break
-					}
-					w.messageCh <- msg
-				default:
-					// TODO
-				}
+			if m.ask == nil {
+				// TODO handle error
+				break
 			}
+			answer := message{
+				sender:  msg.sender,
+				askSeq:  msg.askSeq,
+				msgType: msgTypeAnswer,
+			}
+			answer.msgContent, answer.msgError = m.ask.HandleAsk(msg.sender, msg.msgContent)
+			// TODO handle global message
+			sw := sys.local.sessions.getSession(msg.askSeq)
+			if sw == nil {
+				// TODO handle error
+				break
+			}
+			sw.msgCh <- answer
 		case msgTypeKill:
 			// TODO: There is a situation that cannot kill an actor:
 			// the previous message is blocking this loop.
 			{
-				m.setStatusLock(ActorShuttingDown)
 				sys.local.shutdownActor(m)
-				if err := m.actor.Shutdown(); err != nil {
-					m.logMessageError(err, msg)
-				}
-				m.actor = nil
-				m.setStatusLock(ActorHalt)
-				sys.local.haltActor(m)
-				// Handle remaining
-				// 1.Send 2.Ask 3.Ask-Reply 4.Kill
-				for {
-					msg, more := <-m.receiver
-					if !more {
-						break
-					}
-					m.logMessageError(ErrActorNotRunning, msg)
-					switch {
-					case msg.msgType == msgTypeSend:
-					case msg.msgType == msgTypeAsk && !msg.isReply:
-						// TODO To tell actor is not running
-					case msg.msgType == msgTypeAsk && msg.isReply:
-						// TODO To handle callback failed
-					case msg.msgType == msgTypeKill:
-					}
-				}
+				m.recvRunning = false
+				m.recvEndAt = time.Now()
 				return
 			}
 		}
+		m.recvRunning = false
+		m.recvEndAt = time.Now()
 	}
 }
 
@@ -276,20 +331,29 @@ func (m *LocalRef) Id() Id {
 	return m.id
 }
 
+func (m *LocalRef) receiving(msg message) (err error) {
+	defer func() {
+		if recover() != nil {
+			log.Println("oops sending closed actor ref")
+			err = ErrActorNotRunning
+		}
+	}()
+	m.recvCh <- msg
+	return nil
+}
+
 func (m *LocalRef) Send(sender Ref, msg interface{}) (err error) {
 	// TODO critical state
 	if !m.checkStatus(ActorRunning) {
 		return ErrActorNotRunning
 	}
-	m.receiver <- message{
+	return m.receiving(message{
 		sender:     sender,
-		sequence:   0,
+		askSeq:     0,
 		msgType:    msgTypeSend,
 		msgContent: msg,
 		msgError:   nil,
-		isReply:    false,
-	}
-	return nil
+	})
 }
 
 func (m *LocalRef) Ask(sender Ref, ask interface{}) (interface{}, error) {
@@ -297,20 +361,18 @@ func (m *LocalRef) Ask(sender Ref, ask interface{}) (interface{}, error) {
 	if !m.checkStatus(ActorRunning) {
 		return nil, ErrActorNotRunning
 	}
-	if m.sequence.ask == nil {
-		return nil, ErrActorCannotAsk
-	}
-	wrapper := m.sequence.nextId()
-	m.receiver <- message{
+	sw := sys.local.sessions.genSession()
+	if err := m.receiving(message{
 		sender:     sender,
-		sequence:   wrapper.id,
+		askSeq:     sw.id,
 		msgType:    msgTypeAsk,
 		msgContent: ask,
 		msgError:   nil,
-		isReply:    false,
+	}); err != nil {
+		sys.local.sessions.getSession(sw.id)
+		return nil, err
 	}
-	log.Println(m.id.name, ">>>>>>>>>>ask-ask", wrapper.id, m.sequence.sequences)
-	resp := <-wrapper.messageCh
+	resp := <-sw.msgCh
 	return resp.msgContent, resp.msgError
 }
 
@@ -319,21 +381,34 @@ func (m *LocalRef) Shutdown(sender Ref) error {
 	if !m.checkStatus(ActorRunning) {
 		return ErrActorNotRunning
 	}
-	m.receiver <- message{
+	return m.receiving(message{
 		sender:     sender,
-		sequence:   0,
+		askSeq:     0,
 		msgType:    msgTypeKill,
 		msgContent: nil,
 		msgError:   nil,
-		isReply:    false,
-	}
-	return nil
+	})
 }
 
-func (m *LocalRef) answer(reply message) {
-	// TODO critical state
-	if !m.checkStatus(ActorRunning) {
-		// TODO
-	}
-	m.receiver <- reply
+func (m *LocalRef) IsLocalRunning() bool {
+	return true
 }
+
+func (m *LocalRef) IsRemote() bool {
+	if m.id.node == 0 {
+		return false
+	}
+	return m.id.node != sys.node
+}
+
+func (m *LocalRef) IsGlobal() bool {
+	return m.id.node != 0
+}
+
+//func (m *LocalRef) answer(reply message) {
+//	// TODO critical state
+//	if !m.checkStatus(ActorRunning) {
+//		// TODO
+//	}
+//	m.recvCh <- reply
+//}

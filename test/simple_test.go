@@ -8,11 +8,11 @@ import (
 )
 
 func simple() {
-	aRef, err := actor.Spawn(constSimpleActor, nil)
+	aRef, err := actor.Spawn(newSimpleActor, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	if err := actor.Register(aRef.Id().ActorId(), "simple_1"); err != nil {
+	if err := actor.Register(aRef, "simple_1"); err != nil {
 		log.Fatalln(err)
 	}
 	log.Println(aRef)

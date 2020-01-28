@@ -7,11 +7,11 @@ import (
 
 var (
 	ErrNewActorFnNotFound = errors.New("new id function not found")
-	ErrActorNameExisted   = errors.New("id name existed")
+	ErrActorNameExisted   = errors.New("id nameWrapper existed")
+	ErrNotLocalActor = errors.New("not local actor")
 )
 
 func init() {
-	sys.creators = map[string]NewActorFn{}
 	sys.local.init()
 	log.Println(sys)
 }
@@ -19,30 +19,28 @@ func init() {
 var sys system
 
 type system struct {
-	creators map[string]NewActorFn
-	local    locals
+	node         uint32
+	local        locals
 }
 
-func SetNewActorFn(actorType string, fn NewActorFn) error {
-	sys.creators[actorType] = fn
-	return nil
+func Spawn(fn ConstructorFn, arg interface{}) (*LocalRef, error) {
+	return sys.local.spawnActor(fn, "", arg)
 }
 
-func UnSetNewActorFn(actorType string) error {
-	// TODO
-	return nil
+func SpawnWithName(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
+	return sys.local.spawnActor(fn, name, arg)
 }
 
-func Spawn(actorType string, arg interface{}) (*LocalRef, error) {
-	return sys.local.spawnActor(actorType, arg)
-}
-
-func Register(id uint32, name string) error {
-	return sys.local.bindName(id, name)
+func Register(ref Ref, name string) error {
+	lr, ok := ref.(*LocalRef)
+	if !ok {
+		return ErrNotLocalActor
+	}
+	return sys.local.setNameRunning(lr, name)
 }
 
 func ById(id uint32) *LocalRef {
-	return sys.local.getActor(id)
+	return sys.local.getActorRef(id)
 }
 
 func ByName(name string) *LocalRef {
@@ -57,6 +55,7 @@ func ByName(name string) *LocalRef {
 // It is the base id interface.
 type Actor interface {
 	StartUp(self Ref, arg interface{}) error
+	Started()
 	// The method HandleSend, tell means the message is unidirectional.
 	// Every id should support this method, to handle basic message passing.
 	// Since message passing is thread-safe, method HandleSend and HandleAsk will execute one by one.
@@ -70,7 +69,7 @@ type Actor interface {
 	// decrease to 0, this id will mark as clean up. In this circumstance, method Shutdown will be called.
 	// Another circumstance, Actor System support shutting down. This method will be called when it happens.
 	// IMPORTANT: PLEASE SAVE ALL IMPORTANT DATA OF AN ACTOR WHEN IT IS CALLED SHUTDOWN.
-	Shutdown() error
+	Shutdown()
 }
 
 type ActorStatus int
@@ -87,14 +86,17 @@ type ActorAsk interface {
 
 // Function Type that Create Actor
 // Provided by developer.
-type NewActorFn = func() Actor
+type ConstructorFn = func() Actor
 
 type Ref interface {
 	Id() Id
 	Send(sender Ref, msg interface{}) error
 	Ask(sender Ref, ask interface{}) (answer interface{}, err error)
 	Shutdown(sender Ref) error
-	answer(reply message)
+	IsLocalRunning() bool
+	IsRemote() bool
+	IsGlobal() bool
+	//answer(reply message)
 }
 
 //
