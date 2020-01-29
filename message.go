@@ -6,17 +6,17 @@ package go_actor
 
 type message struct {
 	sender     Ref
+	msgSession uint64
 	msgType    messageType
 	msgContent interface{}
 	msgError   error
-	askSeq     uint64
 }
 
 type messageType int
 
 const (
-	msgTypeSend = 0
-	msgTypeAsk = 1
+	msgTypeSend   = 0
+	msgTypeAsk    = 1
 	msgTypeAnswer = 2
-	msgTypeKill = 3
+	msgTypeKill   = 3
 )

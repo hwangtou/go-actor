@@ -1,35 +1,45 @@
 package go_actor
 
-var Global global
-
-type global struct {
-	node uint32
+type globalManager struct {
+	nodeId uint32
 }
 
-func (m *global) SelfNodeId() uint32 {
-	return m.node
+func (m *globalManager) init() {
 }
 
-func (m *global) Register(name string, actor *Actor) (id Id, err error) {
+func (m *globalManager) Register(name string, actor *Actor) (id Id, err error) {
 	return Id{}, nil
 }
 
-//func (m *global) ByName(nameWrapper string) *GlobalRef {
+//func (m *globalManager) ByName(nameWrapper string) *GlobalRef {
 //
 //}
 //
-//func (m *global) Connect(addr string) error {
+//func (m *globalManager) Connect(addr string) error {
 //
 //}
 
+//
+// Remote Ref
+//
 
-type GlobalRef struct {
+type RemoteRef struct {
+	id Id
 }
 
-//func (m *GlobalRef) Send(sender *Id, msgContent ...interface{}) (err error) {
-//
-//}
-//
-//func (m *GlobalRef) Release() {
-//
-//}
+func (m RemoteRef) Id() Id {
+	return m.id
+}
+
+func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
+	panic("implement me")
+}
+
+func (m *RemoteRef) Ask(sender Ref, ask interface{}) (answer interface{}, err error) {
+	panic("implement me")
+}
+
+func (m *RemoteRef) Shutdown(sender Ref) error {
+	panic("implement me")
+}
+

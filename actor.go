@@ -2,33 +2,41 @@ package go_actor
 
 import (
 	"errors"
-	"log"
-)
-
-var (
-	ErrNewActorFnNotFound = errors.New("new id function not found")
-	ErrActorNameExisted   = errors.New("id nameWrapper existed")
-	ErrNotLocalActor = errors.New("not local actor")
 )
 
 func init() {
-	sys.local.init()
-	log.Println(sys)
+	sys.locals.init()
+	sys.global.init()
+	sys.sessions.init()
 }
+
+var (
+	ErrActorState      = errors.New("actor state error")
+	ErrArgument        = errors.New("argument error")
+	ErrNotLocalActor   = errors.New("not local actor")
+	ErrActorNotRunning = errors.New("actor has halt")
+	ErrActorCannotAsk  = errors.New("actor cannot ask")
+	ErrNameRegistered  = errors.New("name registered")
+)
 
 var sys system
 
 type system struct {
-	node         uint32
-	local        locals
+	locals   localsManager
+	global   globalManager
+	sessions sessionsManager
 }
 
+//
+// Local
+//
+
 func Spawn(fn ConstructorFn, arg interface{}) (*LocalRef, error) {
-	return sys.local.spawnActor(fn, "", arg)
+	return sys.locals.spawnActor(fn, "", arg)
 }
 
 func SpawnWithName(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
-	return sys.local.spawnActor(fn, name, arg)
+	return sys.locals.spawnActor(fn, name, arg)
 }
 
 func Register(ref Ref, name string) error {
@@ -36,15 +44,40 @@ func Register(ref Ref, name string) error {
 	if !ok {
 		return ErrNotLocalActor
 	}
-	return sys.local.setNameRunning(lr, name)
+	return sys.locals.setNameRunning(lr, name)
 }
 
 func ById(id uint32) *LocalRef {
-	return sys.local.getActorRef(id)
+	return sys.locals.getActorRef(id)
 }
 
 func ByName(name string) *LocalRef {
-	return sys.local.getName(name)
+	return sys.locals.getName(name)
+}
+
+//
+// Global Wrapper
+//
+
+var Global globalWrapper
+
+type globalWrapper struct {
+}
+
+func (m globalWrapper) NodeId() uint32 {
+	return sys.global.nodeId
+}
+
+func (m globalWrapper) SpawnWithName(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
+	return sys.locals.spawnActor(fn, name, arg)
+}
+
+func (m globalWrapper) Register(ref *LocalRef, name string) error {
+	return nil
+}
+
+func (m globalWrapper) ByName(name string) Ref {
+	return nil
 }
 
 // ACTOR
@@ -54,7 +87,7 @@ func ByName(name string) *LocalRef {
 // Interface Actor
 // It is the base id interface.
 type Actor interface {
-	StartUp(self Ref, arg interface{}) error
+	StartUp(self *LocalRef, arg interface{}) error
 	Started()
 	// The method HandleSend, tell means the message is unidirectional.
 	// Every id should support this method, to handle basic message passing.
@@ -73,10 +106,11 @@ type Actor interface {
 }
 
 type ActorStatus int
+
 const (
-	ActorHalt ActorStatus = 0
-	ActorStartingUp ActorStatus = 1
-	ActorRunning ActorStatus = 2
+	ActorHalt         ActorStatus = 0
+	ActorStartingUp   ActorStatus = 1
+	ActorRunning      ActorStatus = 2
 	ActorShuttingDown ActorStatus = 3
 )
 
@@ -93,10 +127,6 @@ type Ref interface {
 	Send(sender Ref, msg interface{}) error
 	Ask(sender Ref, ask interface{}) (answer interface{}, err error)
 	Shutdown(sender Ref) error
-	IsLocalRunning() bool
-	IsRemote() bool
-	IsGlobal() bool
-	//answer(reply message)
 }
 
 //

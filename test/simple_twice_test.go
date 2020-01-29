@@ -20,11 +20,8 @@ func simpleTwice1() *actor.LocalRef {
 }
 
 func simpleTwice2() *actor.LocalRef {
-	aRef, err := actor.Spawn(newSimpleActor, nil)
+	aRef, err := actor.SpawnWithName(newSimpleActor, "simple_2", nil)
 	if err != nil {
-		log.Fatalln(err)
-	}
-	if err := actor.Register(aRef, "simple_2"); err != nil {
 		log.Fatalln(err)
 	}
 	log.Println(aRef)
@@ -49,7 +46,7 @@ func TestSimpleTwice(t *testing.T) {
 	if err := r2.Send(r1, "hello r2 again"); err != nil {
 		log.Fatalln(err)
 	}
-if answer, err := r2.Ask(r1, "testing ask"); err != nil {
+	if answer, err := r2.Ask(r1, "testing ask"); err != nil {
 		log.Fatalln(err)
 	} else {
 		log.Println("answer", answer)

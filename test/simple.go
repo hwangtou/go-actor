@@ -19,7 +19,7 @@ func newSimpleActor() actor.Actor {
 	return &simpleActor{}
 }
 
-func (m *simpleActor) StartUp(self actor.Ref, arg interface{}) error {
+func (m *simpleActor) StartUp(self *actor.LocalRef, arg interface{}) error {
 	log.Printf("start up id:%v\n", self.Id())
 	m.self = self
 	return nil

@@ -1,23 +1,24 @@
 package go_actor
 
 import (
+	"log"
 	"sync"
 	"time"
 )
 
 // session manager
 
-type sessionManager struct {
+type sessionsManager struct {
 	sync.Mutex
 	currentId uint64
-	sessions  map[uint64]*sessionWrapper
+	sessions  map[uint64]*session
 }
 
-func (m *sessionManager) init() {
-	m.sessions = map[uint64]*sessionWrapper{}
+func (m *sessionsManager) init() {
+	m.sessions = map[uint64]*session{}
 }
 
-func (m *sessionManager) genSession() *sessionWrapper {
+func (m *sessionsManager) newSession() *session {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
 	for {
@@ -29,13 +30,13 @@ func (m *sessionManager) genSession() *sessionWrapper {
 			break
 		}
 	}
-	w := &sessionWrapper{}
+	w := &session{}
 	w.init(m.currentId)
 	m.sessions[m.currentId] = w
 	return w
 }
 
-func (m *sessionManager) getSession(id uint64) *sessionWrapper {
+func (m *sessionsManager) popSession(id uint64) *session {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
 	w, has := m.sessions[id]
@@ -46,15 +47,31 @@ func (m *sessionManager) getSession(id uint64) *sessionWrapper {
 	return w
 }
 
+func (m *sessionsManager) handleSession(id uint64, answer message) {
+	s := m.popSession(id)
+	if s == nil {
+		log.Println("SERIOUS! Session not found!", id, answer)
+		return
+	}
+
+	// TODO handle remote message
+	defer func() {
+		if recover() != nil {
+			log.Println("oops handle closed session")
+		}
+	}()
+	s.msgCh <- answer
+}
+
 // session wrapper
 
-type sessionWrapper struct {
+type session struct {
 	id        uint64
 	msgCh     chan message
 	createdAt time.Time
 }
 
-func (m *sessionWrapper) init(id uint64) {
+func (m *session) init(id uint64) {
 	m.id = id
 	m.msgCh = make(chan message, 1)
 	m.createdAt = time.Now()
