@@ -11,12 +11,12 @@ func init() {
 }
 
 var (
-	ErrActorState      = errors.New("actor state error")
-	ErrArgument        = errors.New("argument error")
-	ErrNotLocalActor   = errors.New("not local actor")
-	ErrActorNotRunning = errors.New("actor has halt")
-	ErrActorCannotAsk  = errors.New("actor cannot ask")
-	ErrNameRegistered  = errors.New("name registered")
+	ErrActorState         = errors.New("actor state error")
+	ErrArgument           = errors.New("argument error")
+	ErrNotLocalActor      = errors.New("not local actor")
+	ErrActorNotRunning    = errors.New("actor has halt")
+	ErrActorCannotAsk     = errors.New("actor cannot ask")
+	ErrNameRegistered     = errors.New("name registered")
 )
 
 var sys system
@@ -55,6 +55,14 @@ func ByName(name string) *LocalRef {
 	return sys.locals.getName(name)
 }
 
+func Watch(id Id) {
+
+}
+
+//func BatchSend(sender Ref, targets []Ref, msg interface{}) (errors map[Id]error) {
+//
+//}
+
 //
 // Global Wrapper
 //
@@ -87,6 +95,7 @@ func (m globalWrapper) ByName(name string) Ref {
 // Interface Actor
 // It is the base id interface.
 type Actor interface {
+	Type() (name string, version int)
 	StartUp(self *LocalRef, arg interface{}) error
 	Started()
 	// The method HandleSend, tell means the message is unidirectional.
@@ -128,6 +137,16 @@ type Ref interface {
 	Ask(sender Ref, ask interface{}) (answer interface{}, err error)
 	Shutdown(sender Ref) error
 }
+
+// TODO
+//type GroupRef interface {
+//	AddRef()
+//	AddName()
+//	DelRef()
+//	DelName()
+//	Send()
+//	Ask()
+//}
 
 //
 // Id

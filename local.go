@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	actorBufferSize = 0
+	// TODO 0 is for debug use, at least 1 in production
+	actorBufferSize = 1
 )
 
 //
@@ -233,7 +234,7 @@ type LocalRef struct {
 	statusLock  sync.RWMutex
 	actor       Actor
 	ask         ActorAsk
-	recvCh      chan message
+	recvCh      chan *message
 	recvRunning bool
 	recvBeginAt time.Time
 	recvEndAt   time.Time
@@ -250,7 +251,7 @@ func (m *LocalRef) init(id uint32, a Actor, bufSize int) {
 	if ask, ok := a.(ActorAsk); ok {
 		m.ask = ask
 	}
-	m.recvCh = make(chan message, bufSize)
+	m.recvCh = make(chan *message, bufSize)
 }
 
 func (m *LocalRef) setStatus(status ActorStatus) {
@@ -319,7 +320,7 @@ func (m LocalRef) Id() Id {
 	return m.id
 }
 
-func (m *LocalRef) receiving(msg message) (err error) {
+func (m *LocalRef) receiving(msg *message) (err error) {
 	defer func() {
 		if recover() != nil {
 			log.Println("oops sending closed actor ref")
@@ -330,12 +331,19 @@ func (m *LocalRef) receiving(msg message) (err error) {
 	return nil
 }
 
+// #1 PLEASE DO NOT SEND VALUE CONTAINS chan, func, interface{}, pointer and unsafe
+//    it will return ErrMessageValue
+// #2 PLEASE DO NOT MODIFY SENT MESSAGE, no matter send side or receive side
+//    it will affect the state of actor, especially MAP and ARRAY type!
 func (m *LocalRef) Send(sender Ref, msg interface{}) (err error) {
+	if err := checkMessage(msg, false, 0); err != nil {
+		return err
+	}
 	// TODO critical state
 	if !m.checkStatus(ActorRunning) {
 		return ErrActorNotRunning
 	}
-	return m.receiving(message{
+	return m.receiving(&message{
 		sender:     sender,
 		msgSession: 0,
 		msgType:    msgTypeSend,
@@ -344,14 +352,22 @@ func (m *LocalRef) Send(sender Ref, msg interface{}) (err error) {
 	})
 }
 
+// #1 PLEASE DO NOT SEND VALUE CONTAINS chan, func, interface{}, pointer and unsafe
+//    it will return ErrMessageValue
+// #2 PLEASE DO NOT MODIFY SENT MESSAGE, no matter send side or receive side
+//    it will affect the state of actor, especially MAP and ARRAY type!
 func (m *LocalRef) Ask(sender Ref, ask interface{}) (interface{}, error) {
+	if err := checkMessage(ask, false, 0); err != nil {
+		return nil, err
+	}
 	// TODO critical state
 	if !m.checkStatus(ActorRunning) {
+		log.Println(">>>>>>>>>>ask b")
 		return nil, ErrActorNotRunning
 	}
 	s := sys.sessions.newSession()
 	// sending to self
-	if err := m.receiving(message{
+	if err := m.receiving(&message{
 		sender:     sender,
 		msgSession: s.id,
 		msgType:    msgTypeAsk,
@@ -371,7 +387,7 @@ func (m *LocalRef) Shutdown(sender Ref) error {
 	if !m.checkStatus(ActorRunning) {
 		return ErrActorNotRunning
 	}
-	return m.receiving(message{
+	return m.receiving(&message{
 		sender:     sender,
 		msgSession: 0,
 		msgType:    msgTypeKill,

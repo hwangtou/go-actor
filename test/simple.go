@@ -19,6 +19,10 @@ func newSimpleActor() actor.Actor {
 	return &simpleActor{}
 }
 
+func (m *simpleActor) Type() (name string, version int) {
+	return "simple", 1
+}
+
 func (m *simpleActor) StartUp(self *actor.LocalRef, arg interface{}) error {
 	log.Printf("start up id:%v\n", self.Id())
 	m.self = self
