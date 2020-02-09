@@ -16,10 +16,6 @@ type simpleActor struct {
 
 type signal int
 
-func newSimpleActor() actor.Actor {
-	return &simpleActor{}
-}
-
 func (m *simpleActor) Type() (name string, version int) {
 	return "simple", 1
 }

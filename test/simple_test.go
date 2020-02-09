@@ -8,7 +8,7 @@ import (
 )
 
 func simple() {
-	aRef, err := actor.Spawn(newSimpleActor, nil)
+	aRef, err := actor.Spawn(func() actor.Actor { return &simpleActor{} }, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}

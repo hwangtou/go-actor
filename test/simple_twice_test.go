@@ -25,7 +25,7 @@ func simpleTwice1() *actor.LocalRef {
 }
 
 func simpleTwice2() *actor.LocalRef {
-	aRef, err := actor.SpawnWithName(newSimpleActor, "simple_2", nil)
+	aRef, err := actor.SpawnWithName(func() actor.Actor { return &simpleActor{} }, "simple_2", nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
