@@ -114,10 +114,6 @@ func (m *system) Global() *globalManager {
 	return &m.global
 }
 
-//func Watch(id Id) {
-//
-//}
-
 
 func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
 	return defaultSys.Spawn(fn, arg)
@@ -170,7 +166,7 @@ func (m Id) Name() string {
 //
 //}
 
-// TODO
+// todo group send
 //type GroupRef interface {
 //	AddRef()
 //	AddName()
@@ -179,3 +175,7 @@ func (m Id) Name() string {
 //	Send()
 //	Ask()
 //}
+
+// todo performance
+// running actors
+// timeout session
