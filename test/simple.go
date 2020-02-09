@@ -61,11 +61,11 @@ func (m *simpleActor) HandleAsk(sender actor.Ref, ask interface{}) (answer inter
 	if s, ok := ask.(string); ok {
 		switch s {
 		case "struct":
-			return simpleActorMessage{ "aaa", }, nil
+			return simpleActorMessage{"aaa"}, nil
 		case "int":
 			return 10, nil
 		case "structPtr":
-			return &simpleActorMessage{ "bbb", }, nil
+			return &simpleActorMessage{"bbb"}, nil
 		case "nil":
 			return nil, errors.New("test nil")
 		}

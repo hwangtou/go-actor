@@ -1,3 +1,6 @@
+// Copyright 2020 Tou.Hwang. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package actor
 
 import (
@@ -8,18 +11,7 @@ import (
 	"time"
 )
 
-var (
-	ErrNodeId                = errors.New("actor.Global error node id")
-	ErrRemoteRefSendType     = errors.New("actor.Global remote ref send type error")
-	ErrRemoteRefAskType     = errors.New("actor.Global remote ref ask type error")
-	ErrRemoteRefAnswerType     = errors.New("actor.Global remote ref answer type error")
-	ErrGlobalManagerNotReady = errors.New("actor.Global is not ready")
-	ErrGlobalNodeNotReady    = errors.New("actor.Global node is not ready")
-	ErrRemoteConnNotFound    = errors.New("actor.Global remote conn not found")
-	ErrRemoteResponse        = errors.New("actor.Global remote request error")
-	ErrRemoteTimeout         = errors.New("actor.Global remote timeout error")
-	ErrRemoteActorNotFound   = errors.New("actor.Global remote actor not found")
-)
+var ()
 
 var (
 	getNameTimeout = 3 * time.Second
@@ -151,8 +143,8 @@ func (m *RemoteConn) ByName(name string) (*RemoteRef, error) {
 //
 
 type RemoteRef struct {
-	id Id
-	node *outNode  // todo nil
+	id   Id
+	node *outNode // todo nil
 }
 
 func (m RemoteRef) Id() Id {
@@ -172,9 +164,9 @@ func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 
 	// send request
 	w, err := m.node.send(&ConnControl{
-		Type:                 ControlType_CSendName,
+		Type: ControlType_CSendName,
 		SendName: &SendName{
-			Req:                  &SendName_Request{
+			Req: &SendName_Request{
 				FromId:   sender.Id().id,
 				FromName: sender.Id().name,
 				ToName:   m.id.name,
@@ -238,8 +230,8 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 
 	// send request
 	w, err := m.node.send(&ConnControl{
-		Type:                 ControlType_CAskName,
-		AskName:              &AskName{
+		Type: ControlType_CAskName,
+		AskName: &AskName{
 			Req: &AskName_Request{
 				FromId:     sender.Id().id,
 				FromName:   sender.Id().name,

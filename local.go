@@ -1,7 +1,9 @@
+// Copyright 2020 Tou.Hwang. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package actor
 
 import (
-	"errors"
 	"log"
 	"reflect"
 	"sync"
@@ -13,9 +15,15 @@ const (
 	actorBufferSize = 1
 )
 
-var (
-	ErrAnswerType = errors.New("actor.Local answer type error")
-	ErrMessageValue = errors.New("message value error")
+var ()
+
+type Status int
+
+const (
+	Halt         Status = 0
+	StartingUp   Status = 1
+	Running      Status = 2
+	ShuttingDown Status = 3
 )
 
 //

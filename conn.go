@@ -1,8 +1,10 @@
+// Copyright 2020 Tou.Hwang. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package actor
 
 import (
 	"encoding/binary"
-	"errors"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"io"
@@ -17,14 +19,6 @@ import (
 //
 
 type Network string
-
-var (
-	ErrPacketInvalid = errors.New("conn packet invalid")
-	ErrConnError     = errors.New("conn error")
-	ErrAuthFailed    = errors.New("conn auth failed")
-	ErrAuthTimeout   = errors.New("conn auth timeout")
-	ErrReplyFailed   = errors.New("conn reply failed")
-)
 
 const (
 	TCP  Network = "tcp"
@@ -105,9 +99,9 @@ func (m *conn) inMessageHandle() {
 					)
 					if sendName.FromId != 0 {
 						fromRef = &RemoteRef{
-							id:   Id{
+							id: Id{
 								node: msg.inConn.nodeId,
-								id:  sendName.FromId,
+								id:   sendName.FromId,
 								name: sendName.FromName,
 							},
 							node: nil,
@@ -142,9 +136,9 @@ func (m *conn) inMessageHandle() {
 					)
 					if askName.FromId != 0 {
 						fromRef = &RemoteRef{
-							id:   Id{
+							id: Id{
 								node: msg.inConn.nodeId,
-								id:  askName.FromId,
+								id:   askName.FromId,
 								name: askName.FromName,
 							},
 							node: nil,
@@ -171,12 +165,12 @@ func (m *conn) inMessageHandle() {
 						return
 					}
 					err = msg.reply(&ConnControl{
-						Type:                 ControlType_CAskName,
-						AskName:              &AskName{
+						Type: ControlType_CAskName,
+						AskName: &AskName{
 							Resp: &AskName_Response{
-								HasError:             false,
-								ErrorMessage:         "",
-								AnswerData:           answerAny,
+								HasError:     false,
+								ErrorMessage: "",
+								AnswerData:   answerAny,
 							},
 						},
 					})
@@ -255,10 +249,10 @@ func (m *conn) loop() {
 						n.writer.send(&ConnMessage{
 							SequenceId: packet.SequenceId,
 							Control: &ConnControl{
-								Type:     ControlType_CAuth,
-								Auth:     &Auth{
+								Type: ControlType_CAuth,
+								Auth: &Auth{
 									Resp: &Auth_Response{
-										IsAuth:               isAuth,
+										IsAuth: isAuth,
 									},
 								},
 							},
@@ -468,7 +462,7 @@ func (m *outNode) auth(nodeId uint32, name, password string) error {
 	if err := m.writer.send(&ConnMessage{
 		SequenceId: 0,
 		Control: &ConnControl{
-			Type:ControlType_CAuth,
+			Type: ControlType_CAuth,
 			Auth: &Auth{
 				Req: &Auth_Request{
 					FromNodeId: m.global.nodeId,
