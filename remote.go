@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-var ()
-
 var (
 	getNameTimeout = 3 * time.Second
 	requestTimeout = 5 * time.Second

@@ -15,8 +15,6 @@ const (
 	actorBufferSize = 1
 )
 
-var ()
-
 type Status int
 
 const (
