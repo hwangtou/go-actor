@@ -1,14 +1,9 @@
-package go_actor
+package actor
 
 import (
 	"errors"
 )
 
-func init() {
-	sys.locals.init()
-	sys.global.init()
-	sys.sessions.init()
-}
 
 var (
 	ErrActorState         = errors.New("actor state error")
@@ -19,74 +14,6 @@ var (
 	ErrNameRegistered     = errors.New("name registered")
 )
 
-var sys system
-
-type system struct {
-	locals   localsManager
-	global   globalManager
-	sessions sessionsManager
-}
-
-//
-// Local
-//
-
-func Spawn(fn ConstructorFn, arg interface{}) (*LocalRef, error) {
-	return sys.locals.spawnActor(fn, "", arg)
-}
-
-func SpawnWithName(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
-	return sys.locals.spawnActor(fn, name, arg)
-}
-
-func Register(ref Ref, name string) error {
-	lr, ok := ref.(*LocalRef)
-	if !ok {
-		return ErrNotLocalActor
-	}
-	return sys.locals.setNameRunning(lr, name)
-}
-
-func ById(id uint32) *LocalRef {
-	return sys.locals.getActorRef(id)
-}
-
-func ByName(name string) *LocalRef {
-	return sys.locals.getName(name)
-}
-
-func Watch(id Id) {
-
-}
-
-//func BatchSend(sender Ref, targets []Ref, msg interface{}) (errors map[Id]error) {
-//
-//}
-
-//
-// Global Wrapper
-//
-
-var Global globalWrapper
-
-type globalWrapper struct {
-}
-
-func (m globalWrapper) NodeId() uint32 {
-	return sys.global.nodeId
-}
-
-func (m globalWrapper) SpawnWithName(fn ConstructorFn, name string, arg interface{}) (*LocalRef, error) {
-	return sys.locals.spawnActor(fn, name, arg)
-}
-
-func (m globalWrapper) Register(ref *LocalRef, name string) error {
-	return nil
-}
-
-func (m globalWrapper) ByName(name string) Ref {
-	return nil
-}
 
 // ACTOR
 // to create an id, construct a struct type that implement Actor and ActorCanAsk interfaces.
@@ -114,39 +41,103 @@ type Actor interface {
 	Shutdown()
 }
 
-type ActorStatus int
+type Status int
 
 const (
-	ActorHalt         ActorStatus = 0
-	ActorStartingUp   ActorStatus = 1
-	ActorRunning      ActorStatus = 2
-	ActorShuttingDown ActorStatus = 3
+	Halt         Status = 0
+	StartingUp   Status = 1
+	Running      Status = 2
+	ShuttingDown Status = 3
 )
 
-type ActorAsk interface {
+type Ask interface {
 	HandleAsk(sender Ref, ask interface{}) (answer interface{}, err error)
 }
 
 // Function Type that Create Actor
 // Provided by developer.
-type ConstructorFn = func() Actor
 
 type Ref interface {
 	Id() Id
 	Send(sender Ref, msg interface{}) error
-	Ask(sender Ref, ask interface{}) (answer interface{}, err error)
+	// answer should be a pointer reference to object
+	Ask(sender Ref, ask interface{}, answer interface{}) error
 	Shutdown(sender Ref) error
 }
 
-// TODO
-//type GroupRef interface {
-//	AddRef()
-//	AddName()
-//	DelRef()
-//	DelName()
-//	Send()
-//	Ask()
+
+func init() {
+	defaultSys = &system{}
+	defaultSys.init()
+	Global = &defaultSys.global
+}
+
+var defaultSys *system
+var Global *globalManager
+
+
+type system struct {
+	locals   localsManager
+	global   globalManager
+}
+
+func (m *system) init() {
+	m.locals.init(m)
+	m.global.init(m)
+}
+
+func (m *system) Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
+	return m.locals.spawnActor(fn, "", arg)
+}
+
+func (m *system) SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
+	return m.locals.spawnActor(fn, name, arg)
+}
+
+func (m *system) Register(ref Ref, name string) error {
+	lr, ok := ref.(*LocalRef)
+	if !ok {
+		return ErrNotLocalActor
+	}
+	return m.locals.setNameRunning(lr, name)
+}
+
+func (m *system) ById(id uint32) *LocalRef {
+	return m.locals.getActorRef(id)
+}
+
+func (m *system) ByName(name string) *LocalRef {
+	return m.locals.getName(name)
+}
+
+func (m *system) Global() *globalManager {
+	return &m.global
+}
+
+//func Watch(id Id) {
+//
 //}
+
+
+func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
+	return defaultSys.Spawn(fn, arg)
+}
+
+func SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
+	return defaultSys.SpawnWithName(fn, name, arg)
+}
+
+func Register(ref Ref, name string) error {
+	return defaultSys.Register(ref, name)
+}
+
+func ById(id uint32) *LocalRef {
+	return defaultSys.ById(id)
+}
+
+func ByName(name string) *LocalRef {
+	return defaultSys.ByName(name)
+}
 
 //
 // Id
@@ -168,3 +159,23 @@ func (m Id) ActorId() uint32 {
 func (m Id) Name() string {
 	return m.name
 }
+
+// todo
+//func Watch(id Id) {
+//
+//}
+
+// todo
+//func BatchSend(sender Ref, targets []Ref, msg interface{}) (errors map[Id]error) {
+//
+//}
+
+// TODO
+//type GroupRef interface {
+//	AddRef()
+//	AddName()
+//	DelRef()
+//	DelName()
+//	Send()
+//	Ask()
+//}

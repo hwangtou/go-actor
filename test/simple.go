@@ -1,6 +1,7 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	actor "github.com/go-actor"
 	"log"
@@ -57,6 +58,18 @@ func (m *simpleActor) HandleSend(sender actor.Ref, message interface{}) {
 
 func (m *simpleActor) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	log.Printf("received ask:%v\n", ask)
+	if s, ok := ask.(string); ok {
+		switch s {
+		case "struct":
+			return simpleActorMessage{ "aaa", }, nil
+		case "int":
+			return 10, nil
+		case "structPtr":
+			return &simpleActorMessage{ "bbb", }, nil
+		case "nil":
+			return nil, errors.New("test nil")
+		}
+	}
 	return "ANSWER", nil
 }
 
@@ -65,4 +78,5 @@ func (m *simpleActor) Shutdown() {
 }
 
 type simpleActorMessage struct {
+	a string
 }

@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package actor;
+
+import "google/protobuf/any.proto";
+
+message ConnMessage {
+    uint64 sequence_id = 1;
+    ConnControl control = 2;
+}
+
+enum ControlType {
+    CUnknown = 0;
+    CAuth = 2;
+    CSendName = 3;
+    CAskName = 4;
+    CGetName = 5;
+}
+
+message ConnControl {
+    ControlType type = 1;
+    Auth auth = 2;
+    SendName send_name = 3;
+    AskName ask_name = 4;
+    GetName get_name = 5;
+}
+
+message Auth {
+    message Request {
+        uint32 from_node_id = 1;
+        uint32 to_node_id = 2;
+        string conn_name = 3;
+        string password = 4;
+    }
+    message Response {
+        bool is_auth = 1;
+    }
+    Request req = 1;
+    Response resp = 2;
+}
+
+message SendName {
+    message Request {
+        uint32 from_id = 1;
+        string from_name = 2;
+        string to_name = 3;
+        google.protobuf.Any send_data = 4;
+    }
+    message Response {
+        bool has_error = 1;
+        string error_message = 2;
+    }
+    Request req = 1;
+    Response resp = 2;
+}
+
+message AskName {
+    message Request {
+        uint32 from_id = 1;
+        string from_name = 2;
+        string to_name = 3;
+        google.protobuf.Any ask_data = 4;
+        google.protobuf.Any answer_data = 5;
+    }
+    message Response {
+        bool has_error = 1;
+        string error_message = 2;
+        google.protobuf.Any answer_data = 3;
+    }
+    Request req = 1;
+    Response resp = 2;
+}
+
+message GetName {
+    message Request {
+        string name = 1;
+    }
+    message Response {
+        bool has = 1;
+        uint32 actor_id = 2;
+    }
+    Request req = 1;
+    Response resp = 2;
+}

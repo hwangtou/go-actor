@@ -1,4 +1,4 @@
-package go_actor
+package actor
 
 import (
 	"log"

@@ -11,7 +11,9 @@ type a struct {
 }
 
 func simpleTwice1() *actor.LocalRef {
-	aRef, err := actor.Spawn(newSimpleActor, nil)
+	aRef, err := actor.Spawn(func() actor.Actor {
+		return &simpleActor{}
+	}, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -60,11 +62,34 @@ func TestSimpleTwice(t *testing.T) {
 	if err := r2.Send(r1, "hello r2 again"); err != nil {
 		log.Println("send error: string", err)
 	}
-	if answer, err := r2.Ask(r1, "testing ask"); err != nil {
-		log.Println("ask error: string", err)
+	var a1 simpleActorMessage
+	if err := r2.Ask(r1, "struct", &a1); err != nil {
+		log.Println("ask error: struct", err)
 	} else {
-		log.Println("answer", answer)
+		log.Println("answer 1", a1)
 	}
+
+	var a2 int
+	if err := r2.Ask(r1, "int", &a2); err != nil {
+		log.Println("ask error: int", err)
+	} else {
+		log.Println("answer 2", a2)
+	}
+
+	var a3 *simpleActorMessage
+	if err := r2.Ask(r1, "structPtr", &a3); err != nil {
+		log.Println("ask error: struct", err)
+	} else {
+		log.Println("answer 3", a3)
+	}
+
+	var a4 *simpleActorMessage
+	if err := r2.Ask(r1, "nil", &a4); err != nil {
+		log.Println("ask error: nil", a4, ", err", err)
+	} else {
+		log.Println("answer 4", a4)
+	}
+
 	r1.Shutdown(nil)
 	r2.Shutdown(nil)
 	<-time.After(1 * time.Second)
