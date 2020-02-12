@@ -1,6 +1,7 @@
 # go-actor
 
 Actor System for Go
+
 The goal of go-actor is to make it easier for developers to use the actor model.
 
 ## Get started
@@ -11,6 +12,7 @@ can be asking for, and answer it. Package go-actor initializes a default actor
 system, this system help developer to manage actors and their life cycle.
 
 To create an customized actor, you have to implement Actor interface.
+
 ```go
 type Actor interface {
 	// Return type name and type version of the actor.
