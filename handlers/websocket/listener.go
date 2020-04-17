@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/gin-gonic/gin"
-	"github.com/go-actor"
+	"github.com/hwangtou/go-actor"
 	"log"
 	"net"
 	"net/http"
@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	ErrStarUpConfig = errors.New("websocket actor start up config error")
+	ErrStartUpConfig = errors.New("websocket actor start up config error")
 )
 
 type HttpMethod string
@@ -54,10 +54,10 @@ func (m *Listener) StartUp(self *actor.LocalRef, arg interface{}) (err error) {
 	// check config
 	cfg, ok := arg.(*StartUpConfig)
 	if !ok {
-		return ErrStarUpConfig
+		return ErrStartUpConfig
 	}
 	if len(cfg.Handlers) == 0 || cfg.ListenAddr == "" {
-		return ErrStarUpConfig
+		return ErrStartUpConfig
 	}
 	// set router
 	h := gin.Default()
