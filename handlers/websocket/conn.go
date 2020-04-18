@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hwangtou/go-actor"
 	"log"
-	"net/http"
+	"net/textproto"
 	"time"
 )
 
@@ -30,11 +30,16 @@ const (
 type connection struct {
 	self           *actor.LocalRef
 	conn           *websocket.Conn
+	reqHeader      map[string][]string
 	readTimeout    time.Time
 	writeTimeout   time.Time
 	forwarding     actor.Ref
 	acceptedOrDial bool
 	context        *gin.Context
+}
+
+func HeaderGetter(header map[string][]string, key string) string {
+	return textproto.MIMEHeader(header).Get(key)
 }
 
 func (m *connection) Type() (name string, version int) {
@@ -59,6 +64,7 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 			}
 			m.self = self
 			m.conn = ws
+			m.reqHeader = param.context.Request.Header
 			m.readTimeout = param.readTimeout
 			m.forwarding = forwarding
 			m.acceptedOrDial = true
@@ -87,7 +93,6 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 func (m *connection) Started() {
 	ask := &NewWebSocketAsk{
 		AcceptedOrDial: m.acceptedOrDial,
-		Headers: m.context.Request.Header,
 	}
 	answer := &NewWebSocketAnswer{}
 	if err := m.forwarding.Ask(m.self, ask, &answer); err != nil {
@@ -222,11 +227,11 @@ type dialConn struct {
 
 type NewWebSocketAsk struct {
 	AcceptedOrDial bool
-	Headers http.Header
 }
 
 type NewWebSocketAnswer struct {
 	NextForwarder actor.Ref
+	Headers map[string][]string
 }
 
 //
