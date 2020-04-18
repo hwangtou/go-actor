@@ -1,7 +1,7 @@
 package websocket
 
 import (
-	actor "github.com/go-actor"
+	"github.com/hwangtou/go-actor"
 	"log"
 	"testing"
 	"time"

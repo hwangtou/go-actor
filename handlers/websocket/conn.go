@@ -3,15 +3,24 @@ package websocket
 import (
 	"errors"
 	"github.com/gin-gonic/gin"
-	actor "github.com/go-actor"
 	"github.com/gorilla/websocket"
+	"github.com/hwangtou/go-actor"
 	"log"
+	"net/http"
 	"time"
 )
 
 var (
 	ErrForwardActorNotFound   = errors.New("websocket conn actor forward actor not found")
 	ErrStartUpUnsupportedType = errors.New("websocket conn start up unsupported type")
+)
+
+const (
+	TextMessage = websocket.TextMessage
+	BinaryMessage = websocket.BinaryMessage
+	CloseMessage = websocket.CloseMessage
+	PingMessage = websocket.PingMessage
+	PongMessage = websocket.PongMessage
 )
 
 //
@@ -25,6 +34,7 @@ type connection struct {
 	writeTimeout   time.Time
 	forwarding     actor.Ref
 	acceptedOrDial bool
+	context        *gin.Context
 }
 
 func (m *connection) Type() (name string, version int) {
@@ -52,6 +62,7 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 			m.readTimeout = param.readTimeout
 			m.forwarding = forwarding
 			m.acceptedOrDial = true
+			m.context = param.context
 			return nil
 		}
 	case *dialConn:
@@ -74,15 +85,26 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *connection) Started() {
-	if err := m.forwarding.Send(m.self, &NewWebsocketConn{
+	ask := &NewWebSocketAsk{
 		AcceptedOrDial: m.acceptedOrDial,
-	}); err != nil {
+		Headers: m.context.Request.Header,
+	}
+	answer := &NewWebSocketAnswer{}
+	if err := m.forwarding.Ask(m.self, ask, &answer); err != nil {
 		log.Println("websocket conn started send forwarder error,", err)
 		if err := m.self.Shutdown(m.self); err != nil {
 			log.Println("websocket conn close error,", err)
 		}
 		return
 	}
+	if answer.NextForwarder == nil {
+		log.Println("websocket conn started with out next forwarder")
+		if err := m.self.Shutdown(m.self); err != nil {
+			log.Println("websocket conn close error,", err)
+		}
+		return
+	}
+	m.changeForwardingActor(answer.NextForwarder)
 	go func() {
 		for {
 			// deadline
@@ -91,7 +113,7 @@ func (m *connection) Started() {
 				return
 			}
 			// receive
-			msg := &receiveMessage{}
+			msg := &ReceiveMessage{}
 			msg.MessageType, msg.Buffer, msg.Error = m.conn.ReadMessage()
 			if msg.Error != nil {
 				// TODO might be block
@@ -122,7 +144,7 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 	case *SendText:
 		err = m.sendMessage(websocket.TextMessage, []byte(msg.Text))
 	// Handle receive message from connection
-	case *receiveMessage:
+	case *ReceiveMessage:
 		err = m.forwarding.Send(m.self, msg)
 	default:
 		err = actor.ErrMessageValue
@@ -139,19 +161,22 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 func (m *connection) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	switch msg := ask.(type) {
 	// Change forwarding actor
-	case ChangeForwardName:
-		err = m.changeForwardingName(msg.ActorName)
-	case *ChangeForwardName:
-		err = m.changeForwardingName(msg.ActorName)
+	case ChangeForwardingAsk:
+		m.changeForwardingActor(msg.NextForwarder)
+	case *ChangeForwardingAsk:
+		m.changeForwardingActor(msg.NextForwarder)
 	default:
 		err = actor.ErrMessageValue
 	}
-	return nil, err
+	return answer, err
 }
 
 func (m *connection) Shutdown() {
-	if err := m.conn.Close(); err != nil {
-	}
+	time.AfterFunc(100 * time.Millisecond, func() {
+		if err := m.conn.Close(); err != nil {
+			log.Println("websocket conn close error,", err)
+		}
+	})
 }
 
 //
@@ -169,13 +194,8 @@ func (m *connection) sendMessage(t int, buf []byte) error {
 }
 
 // TODO support remote
-func (m *connection) changeForwardingName(name string) error {
-	a := actor.ByName(name)
-	if a == nil {
-		return ErrForwardActorNotFound
-	}
-	m.forwarding = a
-	return nil
+func (m *connection) changeForwardingActor(forwarding actor.Ref) {
+	m.forwarding = forwarding
 }
 
 //
@@ -200,16 +220,25 @@ type dialConn struct {
 // New connection
 //
 
-type NewWebsocketConn struct {
+type NewWebSocketAsk struct {
 	AcceptedOrDial bool
+	Headers http.Header
+}
+
+type NewWebSocketAnswer struct {
+	NextForwarder actor.Ref
 }
 
 //
 // Change Forwarding
 //
 
-type ChangeForwardName struct {
-	ActorName string
+type ChangeForwardingAsk struct {
+	//ActorName string
+	NextForwarder actor.Ref
+}
+
+type ChangeForwardingAnswer struct {
 }
 
 //
@@ -228,7 +257,7 @@ type SendText struct {
 // Read Message
 //
 
-type receiveMessage struct {
+type ReceiveMessage struct {
 	MessageType int
 	Buffer      []byte
 	Error       error

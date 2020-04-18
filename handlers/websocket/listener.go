@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/gin-gonic/gin"
-	"github.com/go-actor"
+	"github.com/hwangtou/go-actor"
 	"log"
 	"net"
 	"net/http"

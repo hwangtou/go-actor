@@ -143,6 +143,7 @@ type Ref interface {
 	// Answer parameter should be a pointer reference to object.
 	Ask(sender Ref, ask interface{}, answer interface{}) error
 	// Shutdown an actor via reference. Shutdown method of the actor will be called.
+	// todo shutdown cause by panic
 	Shutdown(sender Ref) error
 }
 

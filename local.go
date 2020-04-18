@@ -291,6 +291,7 @@ func (m *LocalRef) logMessageError(err error, msg message) {
 }
 
 func (m *LocalRef) spawn() {
+	// todo defer handle panic, because handle function might not safe
 	m.actor.Started()
 	for {
 		// fetch new message
