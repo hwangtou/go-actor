@@ -91,10 +91,11 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *connection) Started() {
-	ask := &NewWebSocketAsk{
+	ask := &NewWebSocketConnAcceptedAsk{
 		AcceptedOrDial: m.acceptedOrDial,
+		RequestHeaders: m.reqHeader,
 	}
-	answer := &NewWebSocketAnswer{}
+	answer := &NewWebSocketConnAcceptedAnswer{}
 	if err := m.forwarding.Ask(m.self, ask, &answer); err != nil {
 		log.Println("websocket conn started send forwarder error,", err)
 		if err := m.self.Shutdown(m.self); err != nil {
@@ -151,7 +152,11 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 	// Handle receive message from connection
 	case *ReceiveMessage:
 		err = m.forwarding.Send(m.self, msg)
+	// Change forwarding actor
+	case *ChangeForwardingActor:
+		m.changeForwardingActor(msg.NextForwarder)
 	default:
+		print("websocket conn unsupported ask type error, ", msg)
 		err = actor.ErrMessageValue
 	}
 	if err != nil {
@@ -165,12 +170,8 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 
 func (m *connection) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	switch msg := ask.(type) {
-	// Change forwarding actor
-	case ChangeForwardingAsk:
-		m.changeForwardingActor(msg.NextForwarder)
-	case *ChangeForwardingAsk:
-		m.changeForwardingActor(msg.NextForwarder)
 	default:
+		print("websocket conn unsupported ask type error, ", msg)
 		err = actor.ErrMessageValue
 	}
 	return answer, err
@@ -225,25 +226,22 @@ type dialConn struct {
 // New connection
 //
 
-type NewWebSocketAsk struct {
+type NewWebSocketConnAcceptedAsk struct {
 	AcceptedOrDial bool
+	RequestHeaders map[string][]string
 }
 
-type NewWebSocketAnswer struct {
+type NewWebSocketConnAcceptedAnswer struct {
 	NextForwarder actor.Ref
-	Headers map[string][]string
 }
 
 //
 // Change Forwarding
 //
 
-type ChangeForwardingAsk struct {
+type ChangeForwardingActor struct {
 	//ActorName string
 	NextForwarder actor.Ref
-}
-
-type ChangeForwardingAnswer struct {
 }
 
 //
