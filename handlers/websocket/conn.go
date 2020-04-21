@@ -91,6 +91,9 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *connection) Started() {
+	if !m.acceptedOrDial {
+		return
+	}
 	ask := &NewWebSocketConnAcceptedAsk{
 		AcceptedOrDial: m.acceptedOrDial,
 		RequestHeaders: m.reqHeader,
@@ -104,7 +107,7 @@ func (m *connection) Started() {
 		return
 	}
 	if answer.NextForwarder == nil {
-		log.Println("websocket conn started with out next forwarder")
+		log.Println("websocket conn started without next forwarder")
 		if err := m.self.Shutdown(m.self); err != nil {
 			log.Println("websocket conn close error,", err)
 		}
@@ -141,12 +144,8 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 	var err error
 	switch msg := message.(type) {
 	// Handle Send Message from other actor
-	case SendBytes:
-		err = m.sendMessage(websocket.BinaryMessage, msg.Buffer)
 	case *SendBytes:
 		err = m.sendMessage(websocket.BinaryMessage, msg.Buffer)
-	case SendText:
-		err = m.sendMessage(websocket.TextMessage, []byte(msg.Text))
 	case *SendText:
 		err = m.sendMessage(websocket.TextMessage, []byte(msg.Text))
 	// Handle receive message from connection
@@ -156,7 +155,7 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 	case *ChangeForwardingActor:
 		m.changeForwardingActor(msg.NextForwarder)
 	default:
-		print("websocket conn unsupported ask type error, ", msg)
+		log.Println("websocket conn unsupported send type error, ", msg)
 		err = actor.ErrMessageValue
 	}
 	if err != nil {
@@ -171,7 +170,7 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 func (m *connection) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	switch msg := ask.(type) {
 	default:
-		print("websocket conn unsupported ask type error, ", msg)
+		log.Println("websocket conn unsupported ask type error, ", msg)
 		err = actor.ErrMessageValue
 	}
 	return answer, err

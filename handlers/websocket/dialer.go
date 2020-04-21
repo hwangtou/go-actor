@@ -34,8 +34,6 @@ func (m *Dialer) HandleSend(sender actor.Ref, message interface{}) {
 func (m *Dialer) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	switch msg := ask.(type) {
 	// Change forwarding actor
-	case Dialing:
-		answer, err = m.dialing(&msg)
 	case *Dialing:
 		answer, err = m.dialing(msg)
 	default:
