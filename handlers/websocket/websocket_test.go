@@ -10,6 +10,8 @@ import (
 var listenerRef *actor.LocalRef
 var dialerRef *actor.LocalRef
 
+const testAddr = "127.0.0.1:20000"
+
 func TestForwarder(t *testing.T) {
 	if _, err := actor.SpawnWithName(func() actor.Actor { return &testForwarder{} }, "forwarder", nil); err != nil {
 		log.Println(err)
@@ -19,7 +21,7 @@ func TestForwarder(t *testing.T) {
 func TestStartListen(t *testing.T) {
 	lr, err := actor.SpawnWithName(func() actor.Actor { return &Listener{} }, "WSListener", &StartUpConfig{
 		ListenNetwork: TCP4,
-		ListenAddr:    "127.0.0.1:10000",
+		ListenAddr:    testAddr,
 		TLS:           nil,
 		Handlers: []HandlerConfig{
 			{
@@ -50,7 +52,7 @@ func TestDialer(t *testing.T) {
 func TestDialing(t *testing.T) {
 	var cr *actor.LocalRef
 	if err := dialerRef.Ask(nil, &Dialing{
-		Url:         "ws://127.0.0.1:10000/websocket",
+		Url:         "ws://" + testAddr + "/websocket",
 		ForwardName: "forwarder",
 	}, &cr); err != nil {
 		log.Println(err)
@@ -101,6 +103,16 @@ func (m *testForwarder) Started() {
 func (m *testForwarder) HandleSend(sender actor.Ref, message interface{}) {
 	log.Printf("%s receive message, sender:%d type:%T message:%v\n",
 		m.self.Id().Name(), sender.Id().ActorId(), message, message)
+}
+
+// Will receive "NewWebSocketConnAcceptedAsk" request, should return "NewWebSocketConnAcceptedAnswer" as result.
+func (m *testForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
+	switch msg := ask.(type) {
+	case *NewWebSocketConnAcceptedAsk:
+		log.Print("receive new conn, ", msg)
+		return &NewWebSocketConnAcceptedAnswer{}, nil
+	}
+	return nil, actor.ErrAskType
 }
 
 func (m *testForwarder) Shutdown() {
