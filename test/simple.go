@@ -3,7 +3,7 @@ package test
 import (
 	"errors"
 	"fmt"
-	actor "github.com/go-actor"
+	"github.com/hwangtou/go-actor"
 	"log"
 	"time"
 )
