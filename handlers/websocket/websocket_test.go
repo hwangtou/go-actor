@@ -124,14 +124,14 @@ func (m *testForwarder) HandleSend(sender actor.Ref, message interface{}) {
 	log.Panicln("Handle send unexpected")
 }
 
-// Will receive "NewWebSocketConnAcceptedAsk" request, should return "NewWebSocketConnAcceptedAnswer" as result.
+// Will receive "ConnAcceptedAsk" request, should return "ConnAcceptedAnswer" as result.
 func (m *testForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
 	log.Printf("%s receive message, sender:%d type:%T message:%v\n",
 		m.self.Id().Name(), sender.Id().ActorId(), ask, ask)
 	switch msg := ask.(type) {
-	case *NewWebSocketConnAcceptedAsk:
+	case *ConnAcceptedAsk:
 		log.Print("receive new conn, ", msg)
-		return &NewWebSocketConnAcceptedAnswer{
+		return &ConnAcceptedAnswer{
 			NextForwarder: actor.ByName(testNextForwarderName),
 		}, nil
 	}

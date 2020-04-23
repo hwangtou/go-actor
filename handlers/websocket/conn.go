@@ -94,11 +94,11 @@ func (m *connection) Started() {
 	if !m.acceptedOrDial {
 		return
 	}
-	ask := &NewWebSocketConnAcceptedAsk{
+	ask := &ConnAcceptedAsk{
 		AcceptedOrDial: m.acceptedOrDial,
 		RequestHeaders: m.reqHeader,
 	}
-	answer := &NewWebSocketConnAcceptedAnswer{}
+	answer := &ConnAcceptedAnswer{}
 	if err := m.forwarding.Ask(m.self, ask, &answer); err != nil {
 		log.Println("websocket conn started send forwarder error,", err)
 		if err := m.self.Shutdown(m.self); err != nil {
@@ -225,12 +225,12 @@ type dialConn struct {
 // New connection
 //
 
-type NewWebSocketConnAcceptedAsk struct {
+type ConnAcceptedAsk struct {
 	AcceptedOrDial bool
 	RequestHeaders map[string][]string
 }
 
-type NewWebSocketConnAcceptedAnswer struct {
+type ConnAcceptedAnswer struct {
 	NextForwarder actor.Ref
 }
 
