@@ -5,11 +5,13 @@ import (
 	"github.com/hwangtou/go-actor"
 	"github.com/hwangtou/go-actor/handlers/websocket"
 	"log"
+	"os"
+	"os/signal"
 	"time"
 )
 
 func main() {
-	ch := make(chan struct{})
+	ch := make(chan os.Signal)
 	log.Println("Spawning auth forwarder actor")
 	if _, err := actor.SpawnWithName(newAuthForwarder, authForwarderName, nil); err != nil {
 		log.Println(err)
@@ -32,7 +34,8 @@ func main() {
 	}); err != nil {
 		log.Fatalln(err)
 	}
-	// todo: catch stop signal
+
+	signal.Notify(ch, os.Interrupt)
 	<-ch
 	log.Println("Stop listener")
 }
