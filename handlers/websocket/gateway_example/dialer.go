@@ -14,7 +14,7 @@ import (
 )
 
 const dialerName = "Dialer"
-const serverAddr = "ws://127.0.0.1/websocket"
+const serverAddr = "ws://127.0.0.1:12345/websocket"
 
 func newDialer() actor.Actor {
 	return &websocket.Dialer{}
@@ -30,11 +30,10 @@ func conn(dialerRef *actor.LocalRef, name, password string) {
 	// Dial to server
 	var connRef *actor.LocalRef
 	header := http.Header{}
-	header.Set("Authorization", password)
+	header.Set("password", password)
 	ask := &websocket.Dialing{
 		Url:           serverAddr,
 		RequestHeader: header,
-		ForwardRef:    nil,
 		ReadTimeout:   time.Time{},
 		WriteTimeout:  time.Time{},
 	}
@@ -56,6 +55,9 @@ func send(name, message string) {
 	if connForwarder == nil {
 		log.Println("Not connected")
 		return
+	}
+	if err := connForwarder.Send(nil, message); err != nil {
+		log.Println("Send error, ", err)
 	}
 }
 
@@ -128,7 +130,7 @@ func (m *connForwarder) Type() (name string, version int) {
 }
 
 func (m *connForwarder) StartUp(self *actor.LocalRef, arg interface{}) error {
-	newConnArg, ok := arg.(NewConnArgs)
+	newConnArg, ok := arg.(*NewConnArgs)
 	if !ok {
 		return errors.New("invalid StartUp arg")
 	}

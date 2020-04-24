@@ -47,13 +47,12 @@ func (m *Dialer) Shutdown() {
 }
 
 func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
-	conn, _, err := websocket.DefaultDialer.Dial(d.Url, nil)
+	conn, _, err := websocket.DefaultDialer.Dial(d.Url, d.RequestHeader)
 	if err != nil {
 		log.Println("websocket dialer dialing error,", err)
 		return nil, err
 	}
 	return actor.Spawn(func() actor.Actor { return &connection{} }, &dialConn{
-		forwardRef:  d.ForwardRef,
 		conn:         conn,
 		readTimeout:  d.ReadTimeout,
 		writeTimeout: d.WriteTimeout,
@@ -67,7 +66,6 @@ func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
 type Dialing struct {
 	Url string
 	RequestHeader http.Header
-	ForwardRef actor.Ref
 	ReadTimeout  time.Time
 	WriteTimeout time.Time
 }

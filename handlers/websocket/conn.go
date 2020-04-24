@@ -81,7 +81,6 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 			m.self = self
 			m.conn = param.conn
 			m.readTimeout = param.readTimeout
-			m.forwarding = param.forwardRef
 			m.acceptedOrDial = false
 			return nil
 		}
@@ -215,7 +214,6 @@ type acceptedConn struct {
 }
 
 type dialConn struct {
-	forwardRef actor.Ref
 	conn         *websocket.Conn
 	readTimeout  time.Time
 	writeTimeout time.Time
