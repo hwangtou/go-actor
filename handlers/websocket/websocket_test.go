@@ -73,7 +73,7 @@ func TestDialing(t *testing.T) {
 	var cr *actor.LocalRef
 	if err := dialerRef.Ask(nil, &Dialing{
 		Url:         "ws://" + testAddr + "/websocket",
-		ForwardName: testForwarderName,
+		ForwardRef: nil,	// TODO
 	}, &cr); err != nil {
 		log.Println(err)
 		return

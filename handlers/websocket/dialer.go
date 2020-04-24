@@ -4,6 +4,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hwangtou/go-actor"
 	"log"
+	"net/http"
 	"time"
 )
 
@@ -52,7 +53,7 @@ func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
 		return nil, err
 	}
 	return actor.Spawn(func() actor.Actor { return &connection{} }, &dialConn{
-		forwardName:  d.ForwardName,
+		forwardRef:  d.ForwardRef,
 		conn:         conn,
 		readTimeout:  d.ReadTimeout,
 		writeTimeout: d.WriteTimeout,
@@ -65,8 +66,8 @@ func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
 
 type Dialing struct {
 	Url string
-	//RequestHeader http.Header
-	ForwardName  string
+	RequestHeader http.Header
+	ForwardRef actor.Ref
 	ReadTimeout  time.Time
 	WriteTimeout time.Time
 }

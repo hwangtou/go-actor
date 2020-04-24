@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hwangtou/go-actor"
 	"log"
-	"net/textproto"
+	"net/http"
 	"time"
 )
 
@@ -30,7 +30,7 @@ const (
 type connection struct {
 	self           *actor.LocalRef
 	conn           *websocket.Conn
-	reqHeader      map[string][]string
+	reqHeader      http.Header
 	readTimeout    time.Time
 	writeTimeout   time.Time
 	forwarding     actor.Ref
@@ -38,9 +38,9 @@ type connection struct {
 	context        *gin.Context
 }
 
-func HeaderGetter(header map[string][]string, key string) string {
-	return textproto.MIMEHeader(header).Get(key)
-}
+//func HeaderGetter(header map[string][]string, key string) string {
+//	return textproto.MIMEHeader(header).Get(key)
+//}
 
 func (m *connection) Type() (name string, version int) {
 	return "WebsocketConn", 1
@@ -74,14 +74,14 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 	case *dialConn:
 		{
 			// get forward actor
-			forwarding := actor.ByName(param.forwardName)
-			if forwarding == nil {
-				return ErrForwardActorNotFound
-			}
+			//forwarding := actor.ByName(param.forwardName)
+			//if forwarding == nil {
+			//	return ErrForwardActorNotFound
+			//}
 			m.self = self
 			m.conn = param.conn
 			m.readTimeout = param.readTimeout
-			m.forwarding = forwarding
+			m.forwarding = param.forwardRef
 			m.acceptedOrDial = false
 			return nil
 		}
@@ -215,7 +215,7 @@ type acceptedConn struct {
 }
 
 type dialConn struct {
-	forwardName  string
+	forwardRef actor.Ref
 	conn         *websocket.Conn
 	readTimeout  time.Time
 	writeTimeout time.Time
@@ -227,7 +227,7 @@ type dialConn struct {
 
 type ConnAcceptedAsk struct {
 	AcceptedOrDial bool
-	RequestHeaders map[string][]string
+	RequestHeaders http.Header
 }
 
 type ConnAcceptedAnswer struct {

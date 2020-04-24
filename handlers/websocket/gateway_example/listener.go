@@ -83,8 +83,8 @@ func (m *authForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer int
 
 func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer *websocket.ConnAcceptedAnswer, err error) {
 	log.Print("receive new conn, ", ask)
-	var name = websocket.HeaderGetter(ask.RequestHeaders, "name")
-	var password = websocket.HeaderGetter(ask.RequestHeaders, "password")
+	var name = ask.RequestHeaders.Get("name")
+	var password = ask.RequestHeaders.Get("password")
 	if password != "password" {
 		return answer, errors.New("un-auth user")
 	}
