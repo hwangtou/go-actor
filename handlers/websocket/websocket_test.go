@@ -72,8 +72,8 @@ func TestDialing(t *testing.T) {
 	log.Println("Dialer actor try dialing")
 	var cr *actor.LocalRef
 	if err := dialerRef.Ask(nil, &Dialing{
-		Url:         "ws://" + testAddr + "/websocket",
-		ForwardRef: nil,	// TODO
+		Url:        "ws://" + testAddr + "/websocket",
+		ForwardRef: nil, // TODO
 	}, &cr); err != nil {
 		log.Println(err)
 		return
@@ -164,7 +164,7 @@ func (m *testNextForwarder) Started() {
 func (m *testNextForwarder) HandleSend(sender actor.Ref, message interface{}) {
 	log.Printf("%s receive message, sender:%d type:%T message:%v\n",
 		m.self.Id().Name(), sender.Id().ActorId(), message, message)
-	_ = sender.Send(m.self, &SendText{ "response" })
+	_ = sender.Send(m.self, &SendText{"response"})
 	_ = sender.Shutdown(m.self)
 }
 

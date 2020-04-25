@@ -29,7 +29,12 @@ func (m *Dialer) Started() {
 }
 
 func (m *Dialer) HandleSend(sender actor.Ref, message interface{}) {
-	log.Println("websocket dialer unknown message from", sender, "message", message)
+	switch msg := message.(type) {
+	case *ReceiveMessage:
+		log.Println("websocket dialer receive a message:", string(msg.Buffer), msg.Error)
+	case *ReceiveClosed:
+		log.Println("websocket dialer receive closed")
+	}
 }
 
 func (m *Dialer) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
@@ -53,7 +58,9 @@ func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
 		return nil, err
 	}
 	return actor.Spawn(func() actor.Actor { return &connection{} }, &dialConn{
+		forwardRef:   d.ForwardRef,
 		conn:         conn,
+		header:       d.RequestHeader,
 		readTimeout:  d.ReadTimeout,
 		writeTimeout: d.WriteTimeout,
 	})
@@ -64,8 +71,9 @@ func (m *Dialer) dialing(d *Dialing) (*actor.LocalRef, error) {
 //
 
 type Dialing struct {
-	Url string
+	Url           string
+	ForwardRef    actor.Ref
 	RequestHeader http.Header
-	ReadTimeout  time.Time
-	WriteTimeout time.Time
+	ReadTimeout   time.Time
+	WriteTimeout  time.Time
 }

@@ -24,7 +24,7 @@ func conn(dialerRef *actor.LocalRef, name, password string) {
 	// Check existed
 	connForwarder := actor.ByName(name)
 	if connForwarder != nil {
-		log.Println("Connected")
+		fmt.Println("Connected")
 		return
 	}
 	// Dial to server
@@ -33,19 +33,20 @@ func conn(dialerRef *actor.LocalRef, name, password string) {
 	header.Set("password", password)
 	ask := &websocket.Dialing{
 		Url:           serverAddr,
+		ForwardRef:    dialerRef,
 		RequestHeader: header,
 		ReadTimeout:   time.Time{},
 		WriteTimeout:  time.Time{},
 	}
 	if err := dialerRef.Ask(nil, ask, &connRef); err != nil {
-		log.Println("Failed to dial server, ", err)
+		fmt.Println("Failed to dial server, ", err)
 		return
 	}
 	// Spawn conn forwarder actor
 	if _, err := actor.SpawnWithName(newConnForwarder, name, &NewConnArgs{
 		ConnRef: connRef,
 	}); err != nil {
-		log.Println("Failed to spawn conn forwarder, ", err)
+		fmt.Println("Failed to spawn conn forwarder, ", err)
 	}
 }
 
@@ -53,11 +54,11 @@ func send(name, message string) {
 	// Check existed
 	connForwarder := actor.ByName(name)
 	if connForwarder == nil {
-		log.Println("Not connected")
+		fmt.Println("Not connected")
 		return
 	}
 	if err := connForwarder.Send(nil, message); err != nil {
-		log.Println("Send error, ", err)
+		fmt.Println("Send error, ", err)
 	}
 }
 
@@ -113,7 +114,7 @@ exit:
 // Conn Forwarder Actor
 
 type connForwarder struct {
-	self *actor.LocalRef
+	self    *actor.LocalRef
 	connRef actor.Ref
 }
 
@@ -152,6 +153,8 @@ func (m *connForwarder) HandleSend(sender actor.Ref, message interface{}) {
 		}
 	case *websocket.ReceiveMessage:
 		fmt.Println("Received message: ", string(msg.Buffer))
+	case *websocket.ReceiveClosed:
+		fmt.Println("Received closed")
 	}
 }
 

@@ -16,11 +16,11 @@ var (
 )
 
 const (
-	TextMessage = websocket.TextMessage
+	TextMessage   = websocket.TextMessage
 	BinaryMessage = websocket.BinaryMessage
-	CloseMessage = websocket.CloseMessage
-	PingMessage = websocket.PingMessage
-	PongMessage = websocket.PongMessage
+	CloseMessage  = websocket.CloseMessage
+	PingMessage   = websocket.PingMessage
+	PongMessage   = websocket.PongMessage
 )
 
 //
@@ -30,12 +30,12 @@ const (
 type connection struct {
 	self           *actor.LocalRef
 	conn           *websocket.Conn
-	reqHeader      http.Header
+	header         http.Header
 	readTimeout    time.Time
 	writeTimeout   time.Time
 	forwarding     actor.Ref
 	acceptedOrDial bool
-	context        *gin.Context
+	//context        *gin.Context
 }
 
 //func HeaderGetter(header map[string][]string, key string) string {
@@ -50,37 +50,59 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 	switch param := arg.(type) {
 	case *acceptedConn:
 		{
-			// get forward actor
-			forwarding := actor.ByName(param.forwardName)
-			if forwarding == nil {
-				return ErrForwardActorNotFound
-			}
 			// upgrade to websocket
 			upgrade := websocket.Upgrader{}
 			// TODO header authentication
 			ws, err := upgrade.Upgrade(param.context.Writer, param.context.Request, nil)
 			if err != nil {
+				log.Println("websocket accepted conn cannot upgrade", err)
 				return err
 			}
+			// get forwarder actor
+			forwarding := actor.ByName(param.forwardName)
+			if forwarding == nil {
+				log.Println("websocket accepted conn forwarder not found, ", ErrForwardActorNotFound)
+				return ErrForwardActorNotFound
+			}
+			// ask forwarder actor
+			ask := &ConnAcceptedAsk{
+				Header: param.context.Request.Header,
+			}
+			answer := &ConnAcceptedAnswer{}
+			if err := forwarding.Ask(m.self, ask, &answer); err != nil {
+				log.Println("websocket accepted conn started send forwarder error,", err)
+				_ = ws.WriteMessage(answer.ForbiddenMessageType, answer.ForbiddenMessageContent)
+				if err := ws.Close(); err != nil {
+					log.Println("websocket accepted conn close error, ", err)
+				}
+				return err
+			}
+			// redirect forwarder
+			if answer.NextForwarder == nil {
+				log.Println("websocket accepted conn started without next forwarder")
+				_ = ws.WriteMessage(answer.ForbiddenMessageType, answer.ForbiddenMessageContent)
+				if err := ws.Close(); err != nil {
+					log.Println("websocket accepted conn close error, ", ErrForwardActorNotFound)
+				}
+				return ErrForwardActorNotFound
+			}
+			m.changeForwardingActor(answer.NextForwarder)
+			// set params
 			m.self = self
 			m.conn = ws
-			m.reqHeader = param.context.Request.Header
+			m.header = param.context.Request.Header
 			m.readTimeout = param.readTimeout
-			m.forwarding = forwarding
+			m.forwarding = answer.NextForwarder
 			m.acceptedOrDial = true
-			m.context = param.context
 			return nil
 		}
 	case *dialConn:
 		{
-			// get forward actor
-			//forwarding := actor.ByName(param.forwardName)
-			//if forwarding == nil {
-			//	return ErrForwardActorNotFound
-			//}
 			m.self = self
 			m.conn = param.conn
+			m.header = param.header
 			m.readTimeout = param.readTimeout
+			m.forwarding = param.forwardRef
 			m.acceptedOrDial = false
 			return nil
 		}
@@ -90,29 +112,6 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *connection) Started() {
-	if !m.acceptedOrDial {
-		return
-	}
-	ask := &ConnAcceptedAsk{
-		AcceptedOrDial: m.acceptedOrDial,
-		RequestHeaders: m.reqHeader,
-	}
-	answer := &ConnAcceptedAnswer{}
-	if err := m.forwarding.Ask(m.self, ask, &answer); err != nil {
-		log.Println("websocket conn started send forwarder error,", err)
-		if err := m.self.Shutdown(m.self); err != nil {
-			log.Println("websocket conn close error,", err)
-		}
-		return
-	}
-	if answer.NextForwarder == nil {
-		log.Println("websocket conn started without next forwarder")
-		if err := m.self.Shutdown(m.self); err != nil {
-			log.Println("websocket conn close error,", err)
-		}
-		return
-	}
-	m.changeForwardingActor(answer.NextForwarder)
 	go func() {
 		for {
 			// deadline
@@ -176,9 +175,12 @@ func (m *connection) HandleAsk(sender actor.Ref, ask interface{}) (answer interf
 }
 
 func (m *connection) Shutdown() {
-	time.AfterFunc(100 * time.Millisecond, func() {
+	time.AfterFunc(100*time.Millisecond, func() {
 		if err := m.conn.Close(); err != nil {
 			log.Println("websocket conn close error,", err)
+		}
+		if err := m.forwarding.Send(m.self, &ReceiveClosed{}); err != nil {
+			log.Println("websocket conn close forward error,", err)
 		}
 	})
 }
@@ -214,26 +216,47 @@ type acceptedConn struct {
 }
 
 type dialConn struct {
+	forwardRef   actor.Ref
 	conn         *websocket.Conn
+	header       http.Header
 	readTimeout  time.Time
 	writeTimeout time.Time
 }
 
 //
-// New connection
+// New accepted connection
+// Send to forwarder
 //
 
 type ConnAcceptedAsk struct {
-	AcceptedOrDial bool
-	RequestHeaders http.Header
+	Header http.Header
 }
 
 type ConnAcceptedAnswer struct {
-	NextForwarder actor.Ref
+	NextForwarder           actor.Ref
+	ForbiddenMessageType    int
+	ForbiddenMessageContent []byte
 }
+
+////
+//// New dialed connection
+//// Send to forwarder
+////
+//
+//type ConnDialedAsk struct {
+//	Succeed bool
+//	Reason string
+//	Url string
+//	RequestHeader http.Header
+//}
+//
+//type ConnDialedAnswer struct {
+//	NextForwarder actor.Ref
+//}
 
 //
 // Change Forwarding
+// Send to forwarder
 //
 
 type ChangeForwardingActor struct {
@@ -261,4 +284,7 @@ type ReceiveMessage struct {
 	MessageType int
 	Buffer      []byte
 	Error       error
+}
+
+type ReceiveClosed struct {
 }

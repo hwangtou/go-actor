@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"github.com/hwangtou/go-actor"
 	"github.com/hwangtou/go-actor/handlers/websocket"
 	"log"
@@ -55,7 +56,7 @@ func newAuthForwarder() actor.Actor {
 }
 
 func (m *authForwarder) Type() (name string, version int) {
-	return "authForwarder", 1
+	return "AuthForwarder", 1
 }
 
 func (m *authForwarder) StartUp(self *actor.LocalRef, arg interface{}) error {
@@ -67,13 +68,13 @@ func (m *authForwarder) Started() {
 }
 
 func (m *authForwarder) HandleSend(sender actor.Ref, message interface{}) {
-	log.Panicln("Handle send unexpected")
+	fmt.Println("Handle send unexpected", message)
 }
 
 // Will receive "ConnAcceptedAsk" request, should return "ConnAcceptedAnswer" as result.
 func (m *authForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
-	log.Printf("%s receive message, sender:%d type:%T message:%v\n",
-		m.self.Id().Name(), sender.Id().ActorId(), ask, ask)
+	fmt.Printf("%s receive message, sender:%v type:%T message:%v\n",
+		m.self.Id().Name(), sender, ask, ask)
 	switch msg := ask.(type) {
 	case *websocket.ConnAcceptedAsk:
 		return m.newConnAccepted(msg)
@@ -82,22 +83,25 @@ func (m *authForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer int
 }
 
 func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer *websocket.ConnAcceptedAnswer, err error) {
-	log.Print("receive new conn, ", ask)
-	var name = ask.RequestHeaders.Get("name")
-	var password = ask.RequestHeaders.Get("password")
+	fmt.Print("receive new conn, ", ask)
+	answer = &websocket.ConnAcceptedAnswer{}
+	var name = ask.Header.Get("name")
+	var password = ask.Header.Get("password")
 	if password != "password" {
+		answer.ForbiddenMessageType = websocket.TextMessage
+		answer.ForbiddenMessageContent = []byte("Invalid user")
 		return answer, errors.New("un-auth user")
 	}
 	var userRef = actor.ByName(name)
 	if userRef == nil {
 		userRef, err = actor.SpawnWithName(newUser, name, nil)
 		if err != nil {
+			answer.ForbiddenMessageType = websocket.TextMessage
+			answer.ForbiddenMessageContent = []byte(err.Error())
 			return answer, err
 		}
 	}
-	answer = &websocket.ConnAcceptedAnswer{
-		NextForwarder: userRef,
-	}
+	answer.NextForwarder = userRef
 	return answer, err
 }
 
@@ -128,7 +132,7 @@ func newUser() actor.Actor {
 }
 
 func (m *user) Type() (name string, version int) {
-	return "user", 1
+	return "User", 1
 }
 
 func (m *user) StartUp(self *actor.LocalRef, arg interface{}) error {
@@ -137,10 +141,19 @@ func (m *user) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *user) Started() {
+	fmt.Println("user started")
 }
 
 func (m *user) HandleSend(sender actor.Ref, message interface{}) {
+	fmt.Printf("user received message:%T\n", message)
+	if err := sender.Send(m.self, &websocket.SendText{
+		Text: "Received",
+	}); err != nil {
+		log.Println("send message failed")
+		_ = sender.Shutdown(m.self)
+	}
 }
 
 func (m *user) Shutdown() {
+	fmt.Println("user shutdown")
 }
