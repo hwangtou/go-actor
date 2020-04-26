@@ -43,6 +43,7 @@ func main() {
 
 //
 // Auth Forwarder Actor
+// A authForwarder actor for listener actor, is used to handle incoming connection.
 //
 
 type authForwarder struct {
@@ -65,16 +66,17 @@ func (m *authForwarder) StartUp(self *actor.LocalRef, arg interface{}) error {
 }
 
 func (m *authForwarder) Started() {
+	log.Println("authForwarder actor started")
 }
 
 func (m *authForwarder) HandleSend(sender actor.Ref, message interface{}) {
-	fmt.Println("Handle send unexpected", message)
+	fmt.Println("authForwarder actor received send unexpected", message)
 }
 
-// Will receive "ConnAcceptedAsk" request, should return "ConnAcceptedAnswer" as result.
+// Will receive "ConnAcceptedAsk" from listener, should return "ConnAcceptedAnswer" as result.
 func (m *authForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
-	fmt.Printf("%s receive message, sender:%v type:%T message:%v\n",
-		m.self.Id().Name(), sender, ask, ask)
+	fmt.Printf("authForwarder actor received ask, sender:%v type:%T message:%v\n",
+		sender, ask, ask)
 	switch msg := ask.(type) {
 	case *websocket.ConnAcceptedAsk:
 		return m.newConnAccepted(msg)
@@ -82,8 +84,11 @@ func (m *authForwarder) HandleAsk(sender actor.Ref, ask interface{}) (answer int
 	return nil, actor.ErrAskType
 }
 
+// Handling new connection accepted, try to get authentication info from request header.
+// If user is valid, find the actor of user, and redirect all messages to this user actor.
 func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer *websocket.ConnAcceptedAnswer, err error) {
 	fmt.Print("receive new conn, ", ask)
+	// Authentication
 	answer = &websocket.ConnAcceptedAnswer{}
 	var name = ask.Header.Get("name")
 	var password = ask.Header.Get("password")
@@ -92,6 +97,7 @@ func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer 
 		answer.ForbiddenMessageContent = []byte("Invalid user")
 		return answer, errors.New("un-auth user")
 	}
+	// Find or create this user actor
 	var userRef = actor.ByName(name)
 	if userRef == nil {
 		userRef, err = actor.SpawnWithName(newUser, name, nil)
@@ -101,11 +107,13 @@ func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer 
 			return answer, err
 		}
 	}
+	// Redirect to the user actor
 	answer.NextForwarder = userRef
 	return answer, err
 }
 
 func (m *authForwarder) Shutdown() {
+	log.Println("authForwarder actor shutdown")
 }
 
 //
@@ -149,7 +157,7 @@ func (m *user) HandleSend(sender actor.Ref, message interface{}) {
 	if err := sender.Send(m.self, &websocket.SendText{
 		Text: "Received",
 	}); err != nil {
-		log.Println("send message failed")
+		fmt.Println("send message failed")
 		_ = sender.Shutdown(m.self)
 	}
 }

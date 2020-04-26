@@ -132,6 +132,11 @@ func (m *connection) Started() {
 			// send
 			if err := m.self.Send(m.self, msg); err != nil {
 				log.Println("websocket conn send error,", err)
+				// TODO might be block
+				if err := m.self.Shutdown(m.self); err != nil {
+					log.Println("websocket conn close error,", err)
+					return
+				}
 				return
 			}
 		}
