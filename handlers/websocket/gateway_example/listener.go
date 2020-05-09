@@ -109,6 +109,9 @@ func (m *authForwarder) newConnAccepted(ask *websocket.ConnAcceptedAsk) (answer 
 	}
 	// Redirect to the user actor
 	answer.NextForwarder = userRef
+	if err := userRef.Send(m.self, &newConnection{}); err != nil {
+		return answer, err
+	}
 	return answer, err
 }
 
@@ -133,6 +136,9 @@ func newListener() actor.Actor {
 
 type user struct {
 	self *actor.LocalRef
+}
+
+type newConnection struct {
 }
 
 func newUser() actor.Actor {

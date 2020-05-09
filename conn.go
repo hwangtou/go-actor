@@ -5,6 +5,7 @@ package actor
 
 import (
 	"encoding/binary"
+	"errors"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"io"
@@ -37,7 +38,7 @@ const (
 )
 
 type conn struct {
-	global      *globalManager
+	remote      *remoteManager
 	ready       bool
 	listener    net.Listener
 	inNames     map[string]string
@@ -52,7 +53,7 @@ func (m *conn) init(nw Network, listen string) error {
 	l, err := net.Listen(string(nw), listen)
 	if err != nil {
 		m.ready = false
-		log.Println("actor.Global.init error,", err)
+		log.Println("actor.Remote.init error,", err)
 		return err
 	}
 	m.ready = true
@@ -61,168 +62,277 @@ func (m *conn) init(nw Network, listen string) error {
 	m.inConn = make(map[uint32]map[string]*inNode)
 	m.inMessageCh = make(chan *inReply, inMessageChannelLength)
 	m.outConn = make(map[uint32]map[string]*outNode)
-	go m.inMessageHandle()
-	go m.loop()
+	go m.inMessageHandler()
+	go m.inConnHandler()
 	return nil
 }
 
-func (m *conn) inMessageHandle() {
-	log.Println("start in message loop")
+func (m *conn) inMessageHandler() {
+	log.Println("actor.Remote starts incoming message handle loop")
 	for {
 		msg, more := <-m.inMessageCh
 		if !more {
 			break
 		}
 		if msg == nil || msg.inConn == nil || msg.inMessage == nil ||
-			msg.inMessage.Control == nil {
-			log.Println("actor.Global in message handle error,", msg)
+			msg.inMessage.Content == nil {
+			log.Println("actor.Remote handled incoming message error,", msg)
 			continue
 		}
+		// High effective parallel working mode
 		go func() {
-			defer func() {
-				// return
-			}()
-			switch msg.inMessage.getType() {
+			replyMessage := &ConnMessage{}
+			switch msg.inMessage.Type {
 			case ControlType_CSendName:
 				{
-					sendName := msg.inMessage.getSendNameReq()
-					if sendName == nil {
-						log.Println("actor.Global in message control send name error,", msg)
-						return
+					// Validation
+					sendNameWrapper := msg.inMessage.GetSendName()
+					resp := &SendName_Response{
+						HasError: true,
 					}
-					lr := m.global.sys.locals.getName(sendName.ToName)
-					if lr == nil {
-						return
+					replyMessage.Type = ControlType_CSendName
+					replyMessage.Content = &ConnMessage_SendName{
+						SendName: &SendName{
+							Data: &SendName_Resp{
+								Resp: resp,
+							},
+						},
 					}
+					if sendNameWrapper == nil {
+						log.Println("actor.Remote handled incoming message, empty send message error,", msg)
+						resp.ErrorMessage = "Empty message"
+						break
+					}
+					sendName := sendNameWrapper.GetReq()
+					if sendName == nil || sendName.SendData == nil {
+						log.Println("actor.Remote handled incoming message, empty send message request error,", msg)
+						resp.ErrorMessage = "Empty message request"
+						break
+					}
+
+					// Get local actor by name
+					localRef := m.remote.sys.locals.getName(sendName.ToName)
+					if localRef == nil {
+						resp.ErrorMessage = "Actor name not found"
+						break
+					}
+
+					// Process send message
 					var (
-						fromRef *RemoteRef
+						sendFromRef *RemoteRef
+						sendMessage interface{}
+						sendError   error
 					)
 					if sendName.FromId != 0 {
-						fromRef = &RemoteRef{
+						sendFromRef = &RemoteRef{
 							id: Id{
 								node: msg.inConn.nodeId,
 								id:   sendName.FromId,
 								name: sendName.FromName,
 							},
-							node: nil,
+							node: nil, // todo
 						}
 					}
-					sendD, err := ptypes.Empty(sendName.SendData)
-					if err != nil {
-						return
+					switch sendName.SendData.Type {
+					case DataType_ProtoBuf:
+						sendData := sendName.SendData.GetProto()
+						sendDataProto, err := ptypes.Empty(sendData)
+						if err != nil {
+							sendError = err
+							break
+						}
+						err = ptypes.UnmarshalAny(sendData, sendDataProto)
+						if err != nil {
+							sendError = err
+							break
+						}
+						sendMessage = sendDataProto
+					case DataType_String:
+						sendMessage = sendName.SendData.GetStr()
+					default:
+						sendError = errors.New("unsupported type") // todo
+						break
 					}
-					err = ptypes.UnmarshalAny(sendName.SendData, sendD)
-					if err != nil {
-						return
+					if sendError != nil {
+						resp.ErrorMessage = sendError.Error()
+						break
 					}
-					err = lr.Send(fromRef, sendD)
-					if err != nil {
-						return
+
+					// Send local actor
+					sendError = localRef.Send(sendFromRef, sendMessage)
+					if sendError != nil {
+						resp.ErrorMessage = sendError.Error()
+					} else {
+						resp.HasError = false
 					}
 				}
 			case ControlType_CAskName:
 				{
-					askName := msg.inMessage.getAskNameReq()
-					if askName == nil {
-						log.Println("actor.Global in message control ask name error,", msg)
-						return
+					// Validation
+					askNameWrapper := msg.inMessage.GetAskName()
+					resp := &AskName_Response{
+						HasError: true,
 					}
-					lr := m.global.sys.locals.getName(askName.ToName)
-					if lr == nil {
-						return
+					replyMessage.Type = ControlType_CAskName
+					replyMessage.Content = &ConnMessage_AskName{
+						AskName: &AskName{
+							Data: &AskName_Resp{
+								Resp: resp,
+							},
+						},
 					}
+					if askNameWrapper == nil {
+						log.Println("actor.Remote handled incoming message, empty ask message error,", msg)
+						resp.ErrorMessage = "Empty message"
+						break
+					}
+					askName := askNameWrapper.GetReq()
+					if askName == nil || askName.AskData == nil || askName.AnswerData == nil {
+						log.Println("actor.Remote handled incoming message, empty ask message request error,", msg)
+						resp.ErrorMessage = "Empty message request"
+						break
+					}
+
+					// Get local actor by name
+					localRef := m.remote.sys.locals.getName(askName.ToName)
+					if localRef == nil {
+						resp.ErrorMessage = "Actor name not found"
+						break
+					}
+
+					// Process ask message
 					var (
-						fromRef *RemoteRef
+						askFromRef    *RemoteRef
+						askMessage    interface{}
+						answerMessage interface{}
+						answerError   error
 					)
 					if askName.FromId != 0 {
-						fromRef = &RemoteRef{
+						askFromRef = &RemoteRef{
 							id: Id{
 								node: msg.inConn.nodeId,
 								id:   askName.FromId,
 								name: askName.FromName,
 							},
-							node: nil,
+							node: nil, // todo
 						}
 					}
-					askD, err := ptypes.Empty(askName.AskData)
-					if err != nil {
-						return
+					// Ask
+					switch askName.AskData.Type {
+					case DataType_ProtoBuf:
+						askData := askName.AskData.GetProto()
+						askDataProto, err := ptypes.Empty(askData)
+						if err != nil {
+							answerError = err
+							break
+						}
+						err = ptypes.UnmarshalAny(askData, askDataProto)
+						if err != nil {
+							answerError = err
+							break
+						}
+						askMessage = askDataProto
+					case DataType_String:
+						askMessage = askName.AskData.GetStr()
+					default:
+						answerError = errors.New("unsupported type") // todo
+						break
 					}
-					answerD, err := ptypes.Empty(askName.AnswerData)
-					if err != nil {
-						return
+					if answerError != nil {
+						resp.ErrorMessage = answerError.Error()
+						break
 					}
-					err = ptypes.UnmarshalAny(askName.AskData, askD)
-					if err != nil {
-						return
+					// Answer
+					switch askName.AnswerData.Type {
+					case DataType_ProtoBuf:
+						answerData := askName.AnswerData.GetProto()
+						answerDataProto, err := ptypes.Empty(answerData)
+						if err != nil {
+							answerError = err
+							break
+						}
+						err = ptypes.UnmarshalAny(answerData, answerDataProto)
+						if err != nil {
+							answerError = err
+							break
+						}
+						answerMessage = answerDataProto
+					case DataType_String:
+						answerMessage = askName.AnswerData.GetStr()
+					default:
+						answerError = errors.New("unsupported type") // todo
+						break
 					}
-					err = lr.Ask(fromRef, askD, &answerD)
-					if err != nil {
-						return
+					if answerError != nil {
+						resp.ErrorMessage = answerError.Error()
+						break
 					}
-					answerAny, err := ptypes.MarshalAny(answerD)
-					if err != nil {
-						return
-					}
-					err = msg.reply(&ConnControl{
-						Type: ControlType_CAskName,
-						AskName: &AskName{
-							Resp: &AskName_Response{
-								HasError:     false,
-								ErrorMessage: "",
-								AnswerData:   answerAny,
-							},
-						},
-					})
-					if err != nil {
-						return
+
+					// Send local actor
+					answerError = localRef.Ask(askFromRef, askMessage, &answerMessage)
+					if answerError != nil {
+						resp.ErrorMessage = answerError.Error()
+					} else {
+						resp.HasError = false
 					}
 				}
 			case ControlType_CGetName:
 				{
-					getName := msg.inMessage.getGetNameReq()
-					if getName == nil {
-						log.Println("actor.Global in message control get name error,", msg)
-						return
+					// Validation
+					getNameWrapper := msg.inMessage.GetGetName()
+					resp := &GetName_Response{
+						Has: false,
 					}
-					var (
-						hasActor bool   = false
-						actorId  uint32 = 0
-					)
-					if lr := m.global.sys.locals.getName(getName.Name); lr != nil {
-						hasActor = true
-						actorId = lr.id.id
-					}
-					if err := msg.reply(&ConnControl{
-						Type: ControlType_CGetName,
+					replyMessage.Type = ControlType_CGetName
+					replyMessage.Content = &ConnMessage_GetName{
 						GetName: &GetName{
-							Resp: &GetName_Response{
-								Has:     hasActor,
-								ActorId: actorId,
+							Data: &GetName_Resp{
+								Resp: resp,
 							},
 						},
-					}); err != nil {
-						log.Println("actor.Global in message control get name reply error,", err)
+					}
+					if getNameWrapper == nil {
+						log.Println("actor.Remote handled incoming message, empty get message error,", msg)
+						resp.ErrorMessage = "Empty message"
+						break
+					}
+					getName := getNameWrapper.GetReq()
+					if getName == nil || getName.Name == "" {
+						log.Println("actor.Remote handled incoming message, empty get message request error,", msg)
+						resp.ErrorMessage = "Empty message request"
+						break
+					}
+
+					// Process get message
+					if lr := m.remote.sys.locals.getName(getName.Name); lr != nil {
+						resp.Has = true
+						resp.ActorId = lr.id.id
+					} else {
+						resp.ErrorMessage = "Actor name not found"
 					}
 				}
 			default:
-				log.Println("actor.Global in message control type error,", msg)
+				log.Println("actor.Remote handled incoming message type error,", msg)
+			}
+			if err := msg.reply(replyMessage); err != nil {
+				log.Println("actor.Remote handled incoming message reply error,", err)
 			}
 		}()
 	}
 }
 
-func (m *conn) loop() {
-	log.Println("start listen loop")
+func (m *conn) inConnHandler() {
+	log.Println("actor.Remote starts incoming connection handle loop")
 	for {
 		conn, err := m.listener.Accept()
 		if err != nil {
+			log.Println("actor.Remote incoming connection accepted failed,", err)
 			break
 		}
 		go func() {
 			n := &inNode{
-				ready:  false,
-				global: m.global,
+				ready:  true,
+				global: m.remote,
 				nodeId: 0,
 				name:   "",
 				conn: connSafe{
@@ -241,56 +351,39 @@ func (m *conn) loop() {
 				n.conn.safeClose()
 			}()
 			// receive auth
+			isAuth, sequenceId := false, uint64(0)
 			select {
 			case packet, more := <-n.reader.recvCh:
 				{
-					log.Println(">>>>>>>>>>conn auth packet,", packet)
-					reply := func(isAuth bool) {
-						n.writer.send(&ConnMessage{
-							SequenceId: packet.SequenceId,
-							Control: &ConnControl{
-								Type: ControlType_CAuth,
-								Auth: &Auth{
-									Resp: &Auth_Response{
-										IsAuth: isAuth,
-									},
-								},
-							},
-						})
-					}
 					if !more {
-						log.Println("actor.Global.listen auth no message", packet)
+						log.Println("actor.Remote.listen auth no message", packet) // todo: desc
 						// todo reply error
-						reply(false)
-						return
+						break
 					}
-					if packet == nil || packet.getAuthReq() == nil {
-						log.Println("actor.Global.listen auth info error", packet)
+					if packet == nil || packet.GetAuth() == nil || packet.GetAuth().GetReq() == nil {
+						log.Println("actor.Remote.listen auth info error", packet) // todo: desc
 						// todo reply error
-						reply(false)
-						return
+						break
 					}
-					password, has := m.inNames[packet.Control.Auth.Req.ConnName]
-					if !has || password != packet.Control.Auth.Req.Password {
-						log.Println("actor.Global.listen auth invalid,", packet)
+					req := packet.GetAuth().GetReq()
+					password, has := m.inNames[req.ConnName]
+					if !has || password != req.Password {
+						log.Println("actor.Remote.listen auth invalid,", packet) // todo: desc
 						// todo reply error
-						reply(false)
-						return
+						break
 					}
-					if packet.Control.Auth.Req.FromNodeId == 0 {
-						log.Println("actor.Global.listen auth invalid,", packet)
+					if req.FromNodeId == 0 {
+						log.Println("actor.Remote.listen auth invalid,", packet) // todo: desc
 						// todo reply error
-						reply(false)
-						return
+						break
 					}
-					if packet.Control.Auth.Req.ToNodeId != m.global.nodeId {
-						log.Println("actor.Global.listen auth invalid,", packet)
+					if req.ToNodeId != m.remote.nodeId {
+						log.Println("actor.Remote.listen auth invalid,", packet) // todo: desc
 						// todo reply error
-						reply(false)
-						return
+						break
 					}
-					n.nodeId = packet.Control.Auth.Req.FromNodeId
-					n.name = packet.Control.Auth.Req.ConnName
+					n.nodeId = req.FromNodeId
+					n.name = req.ConnName
 					if _, has := m.inConn[n.nodeId]; !has {
 						m.inConn[n.nodeId] = make(map[string]*inNode)
 					}
@@ -298,20 +391,37 @@ func (m *conn) loop() {
 						oldN.conn.safeClose()
 					}
 					m.inConn[n.nodeId][n.name] = n
+					sequenceId = packet.SequenceId
 					// todo reply okay
-					reply(true)
-
+					isAuth = true
 					// todo binary dial
 				}
 			case <-time.After(authTimeout * time.Second):
-				log.Println("actor.Global.listen auth timeout")
+				log.Println("actor.Remote.listen auth timeout") // todo: desc
+				return
+			}
+			if err := n.writer.send(&ConnMessage{
+				SequenceId: sequenceId,
+				Type:       ControlType_CAuth,
+				Direction:  Direction_Response,
+				Content: &ConnMessage_Auth{
+					Auth: &Auth{
+						Data: &Auth_Resp{
+							Resp: &Auth_Response{
+								IsAuth: isAuth,
+							},
+						},
+					},
+				},
+			}); err != nil {
+				log.Println("actor.Remote.listen send error,") // todo: desc
+			}
+			if !isAuth {
 				return
 			}
 			// reply
 			for {
-				log.Println(">>>>>>>>>>conn loop")
 				packet, more := <-n.reader.recvCh
-				log.Println(">>>>>>>>>>conn loop packet,", packet)
 				if !more {
 					return
 				}
@@ -359,7 +469,7 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 	// todo
 	n = &outNode{
 		ready:   false,
-		global:  m.global,
+		global:  m.remote,
 		nodeId:  nodeId,
 		name:    name,
 		nw:      nw,
@@ -376,7 +486,7 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 		delete(m.outConn[nodeId], name)
 		return nil, err
 	}
-	log.Println("actor.Global.getOutConnOrDial new conn")
+	log.Println("actor.Remote.getOutConnOrDial new conn")
 	return n, nil
 }
 
@@ -414,7 +524,7 @@ func (m *conn) close() {
 
 type outNode struct {
 	ready   bool
-	global  *globalManager
+	global  *remoteManager
 	nodeId  uint32
 	name    string
 	nw      Network
@@ -439,7 +549,7 @@ func (m *outNode) dial(name, password string) (err error) {
 	m.conn.closed = false
 	m.conn.Conn, err = net.Dial(string(m.nw), m.addr)
 	if err != nil {
-		log.Println("actor.Global.getOutConnOrDial dial error,", err)
+		log.Println("actor.Remote.getOutConnOrDial dial error,", err)
 		return err
 	}
 	m.reader.init(&m.conn)
@@ -447,7 +557,7 @@ func (m *outNode) dial(name, password string) (err error) {
 
 	err = m.auth(m.nodeId, name, password)
 	if err != nil {
-		log.Println("actor.Global.getOutConnOrDial password error,", err)
+		log.Println("actor.Remote.getOutConnOrDial password error,", err)
 		m.conn.safeClose()
 		return err
 	}
@@ -461,14 +571,17 @@ func (m *outNode) auth(nodeId uint32, name, password string) error {
 	// send authentication
 	if err := m.writer.send(&ConnMessage{
 		SequenceId: 0,
-		Control: &ConnControl{
-			Type: ControlType_CAuth,
+		Type:       ControlType_CAuth,
+		Direction:  Direction_Request,
+		Content: &ConnMessage_Auth{
 			Auth: &Auth{
-				Req: &Auth_Request{
-					FromNodeId: m.global.nodeId,
-					ToNodeId:   nodeId,
-					ConnName:   name,
-					Password:   password,
+				Data: &Auth_Req{
+					Req: &Auth_Request{
+						FromNodeId: m.global.nodeId,
+						ToNodeId:   nodeId,
+						ConnName:   name,
+						Password:   password,
+					},
 				},
 			},
 		},
@@ -478,17 +591,17 @@ func (m *outNode) auth(nodeId uint32, name, password string) error {
 	// receive
 	select {
 	case packet, more := <-m.reader.recvCh:
-		log.Println(">>>>>>>>>>out node auth packet,", packet)
 		if !more {
 			return ErrConnError
 		}
-		if packet == nil || packet.getAuthResp() == nil {
+		if packet == nil || packet.GetAuth() == nil || packet.GetAuth().GetResp() == nil {
 			return ErrAuthFailed
 		}
-		if packet.Control.Auth.Resp.IsAuth {
+		resp := packet.GetAuth().GetResp()
+		if resp.IsAuth {
 			return nil
 		}
-		log.Println("actor.Global.getOutConnOrDial auth error message", packet.Control)
+		log.Println("actor.Remote.getOutConnOrDial auth error message", packet) // todo desc
 		return ErrAuthFailed
 	case <-time.After(authTimeout * time.Second):
 		return ErrAuthTimeout
@@ -504,7 +617,7 @@ func (m *outNode) loop() {
 		}
 		seq, has := m.seq[packet.SequenceId]
 		if !has {
-			log.Println("actor.Global out node receive unknown sequence,", packet)
+			log.Println("actor.Remote out node receive unknown sequence,", packet)
 			continue
 		}
 		m.seqLock.Lock()
@@ -514,7 +627,7 @@ func (m *outNode) loop() {
 	}
 }
 
-func (m *outNode) send(control *ConnControl) (*seqWrapper, error) {
+func (m *outNode) send(message *ConnMessage) (*seqWrapper, error) {
 	if !m.ready {
 		return nil, ErrGlobalNodeNotReady
 	}
@@ -527,11 +640,10 @@ func (m *outNode) send(control *ConnControl) (*seqWrapper, error) {
 		}
 	}
 	seqId := m.seqId
+	message.SequenceId = seqId
+	message.Direction = Direction_Request
 	w := &seqWrapper{
-		req: &ConnMessage{
-			SequenceId: seqId,
-			Control:    control,
-		},
+		req:       message,
 		respCh:    make(chan *ConnMessage, 1),
 		createdAt: time.Now(),
 	}
@@ -564,7 +676,7 @@ func (m *outNode) close() {
 
 type inNode struct {
 	ready  bool
-	global *globalManager
+	global *remoteManager
 	nodeId uint32
 	name   string
 	conn   connSafe
@@ -577,14 +689,13 @@ type inReply struct {
 	inConn    *inNode
 }
 
-func (m *inReply) reply(control *ConnControl) error {
+func (m *inReply) reply(message *ConnMessage) error {
 	if !m.inConn.ready {
 		return ErrReplyFailed
 	}
-	return m.inConn.writer.send(&ConnMessage{
-		SequenceId: m.inMessage.SequenceId,
-		Control:    control,
-	})
+	message.SequenceId = m.inMessage.SequenceId
+	message.Direction = Direction_Response
+	return m.inConn.writer.send(message)
 }
 
 //
@@ -626,7 +737,7 @@ func (m *connReader) loop() {
 			num, err := m.conn.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					log.Println("actor.Global out conn loop error,", err)
+					log.Println("actor.Remote out conn loop error,", err)
 				}
 				return
 			}
@@ -765,89 +876,89 @@ func (m *connSafe) safeClose() {
 // conn message handler
 //
 
-func (m *ConnMessage) getType() ControlType {
-	if m == nil || m.Control == nil {
-		return ControlType_CUnknown
-	}
-	return m.Control.Type
-}
-
-func (m *ConnMessage) getAuthReq() *Auth_Request {
-	if m.getType() != ControlType_CAuth {
-		return nil
-	}
-	if m.Control.Auth == nil || m.Control.Auth.Req == nil {
-		return nil
-	}
-	return m.Control.Auth.Req
-}
-
-func (m *ConnMessage) getAuthResp() *Auth_Response {
-	if m.getType() != ControlType_CAuth {
-		return nil
-	}
-	if m.Control.Auth == nil || m.Control.Auth.Resp == nil {
-		return nil
-	}
-	return m.Control.Auth.Resp
-}
-
-func (m *ConnMessage) getSendNameReq() *SendName_Request {
-	if m.getType() != ControlType_CSendName {
-		return nil
-	}
-	if m.Control.SendName == nil || m.Control.SendName.Req == nil {
-		return nil
-	}
-	return m.Control.SendName.Req
-}
-
-func (m *ConnMessage) getSendNameResp() *SendName_Response {
-	if m.getType() != ControlType_CSendName {
-		return nil
-	}
-	if m.Control.SendName == nil || m.Control.SendName.Resp == nil {
-		return nil
-	}
-	return m.Control.SendName.Resp
-}
-
-func (m *ConnMessage) getAskNameReq() *AskName_Request {
-	if m.getType() != ControlType_CAskName {
-		return nil
-	}
-	if m.Control.AskName == nil || m.Control.AskName.Req == nil {
-		return nil
-	}
-	return m.Control.AskName.Req
-}
-
-func (m *ConnMessage) getAskNameResp() *AskName_Response {
-	if m.getType() != ControlType_CAskName {
-		return nil
-	}
-	if m.Control.AskName == nil || m.Control.AskName.Resp == nil {
-		return nil
-	}
-	return m.Control.AskName.Resp
-}
-
-func (m *ConnMessage) getGetNameReq() *GetName_Request {
-	if m.getType() != ControlType_CGetName {
-		return nil
-	}
-	if m.Control.GetName == nil || m.Control.GetName.Req == nil {
-		return nil
-	}
-	return m.Control.GetName.Req
-}
-
-func (m *ConnMessage) getGetNameResp() *GetName_Response {
-	if m.getType() != ControlType_CGetName {
-		return nil
-	}
-	if m.Control.GetName == nil || m.Control.GetName.Resp == nil {
-		return nil
-	}
-	return m.Control.GetName.Resp
-}
+//func (m *ConnMessage) getType() ControlType {
+//	if m == nil || m.Control == nil {
+//		return ControlType_CUnknown
+//	}
+//	return m.Control.Type
+//}
+//
+//func (m *ConnMessage) getAuthReq() *Auth_Request {
+//	if m.getType() != ControlType_CAuth {
+//		return nil
+//	}
+//	if m.Control.Auth == nil || m.Control.Auth.Req == nil {
+//		return nil
+//	}
+//	return m.Control.Auth.Req
+//}
+//
+//func (m *ConnMessage) getAuthResp() *Auth_Response {
+//	if m.getType() != ControlType_CAuth {
+//		return nil
+//	}
+//	if m.Control.Auth == nil || m.Control.Auth.Resp == nil {
+//		return nil
+//	}
+//	return m.Control.Auth.Resp
+//}
+//
+//func (m *ConnMessage) getSendNameReq() *SendName_Request {
+//	if m.getType() != ControlType_CSendName {
+//		return nil
+//	}
+//	if m.Control.SendName == nil || m.Control.SendName.Req == nil {
+//		return nil
+//	}
+//	return m.Control.SendName.Req
+//}
+//
+//func (m *ConnMessage) getSendNameResp() *SendName_Response {
+//	if m.getType() != ControlType_CSendName {
+//		return nil
+//	}
+//	if m.Control.SendName == nil || m.Control.SendName.Resp == nil {
+//		return nil
+//	}
+//	return m.Control.SendName.Resp
+//}
+//
+//func (m *ConnMessage) getAskNameReq() *AskName_Request {
+//	if m.getType() != ControlType_CAskName {
+//		return nil
+//	}
+//	if m.Control.AskName == nil || m.Control.AskName.Req == nil {
+//		return nil
+//	}
+//	return m.Control.AskName.Req
+//}
+//
+//func (m *ConnMessage) getAskNameResp() *AskName_Response {
+//	if m.getType() != ControlType_CAskName {
+//		return nil
+//	}
+//	if m.Control.AskName == nil || m.Control.AskName.Resp == nil {
+//		return nil
+//	}
+//	return m.Control.AskName.Resp
+//}
+//
+//func (m *ConnMessage) getGetNameReq() *GetName_Request {
+//	if m.getType() != ControlType_CGetName {
+//		return nil
+//	}
+//	if m.Control.GetName == nil || m.Control.GetName.Req == nil {
+//		return nil
+//	}
+//	return m.Control.GetName.Req
+//}
+//
+//func (m *ConnMessage) getGetNameResp() *GetName_Response {
+//	if m.getType() != ControlType_CGetName {
+//		return nil
+//	}
+//	if m.Control.GetName == nil || m.Control.GetName.Resp == nil {
+//		return nil
+//	}
+//	return m.Control.GetName.Resp
+//}

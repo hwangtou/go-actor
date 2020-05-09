@@ -12,27 +12,27 @@ import (
 )
 
 var (
-	getNameTimeout = 3 * time.Second
+	//getNameTimeout = 3 * time.Second
 	requestTimeout = 5 * time.Second
 )
 
-type globalManager struct {
+type remoteManager struct {
 	sys    *system
 	ready  bool
 	nodeId uint32
 	conn   conn
 }
 
-func (m *globalManager) init(sys *system) {
+func (m *remoteManager) init(sys *system) {
 	m.sys = sys
 	m.ready = false
 }
 
-func (m *globalManager) DefaultInit(nodeId uint32) error {
+func (m *remoteManager) DefaultInit(nodeId uint32) error {
 	if m.ready {
-		return ErrGlobalManagerNotReady
+		return ErrRemoteManagerNotReady
 	}
-	m.conn.global = m
+	m.conn.remote = m
 	m.nodeId = nodeId
 	if err := m.conn.init(TCP, "0.0.0.0:12345"); err != nil {
 		return err
@@ -42,11 +42,11 @@ func (m *globalManager) DefaultInit(nodeId uint32) error {
 	return nil
 }
 
-func (m *globalManager) Init(nodeId uint32, nw Network, routerAddr string, allowedNames map[string]string) error {
+func (m *remoteManager) Init(nodeId uint32, nw Network, routerAddr string, allowedNames map[string]string) error {
 	if m.ready {
-		return ErrGlobalManagerNotReady
+		return ErrRemoteManagerNotReady
 	}
-	m.conn.global = m
+	m.conn.remote = m
 	m.nodeId = nodeId
 	if err := m.conn.init(nw, routerAddr); err != nil {
 		return err
@@ -56,15 +56,15 @@ func (m *globalManager) Init(nodeId uint32, nw Network, routerAddr string, allow
 	return nil
 }
 
-func (m *globalManager) Close() {
+func (m *remoteManager) Close() {
 	m.ready = false
 	m.nodeId = 0
 	m.conn.close()
 }
 
-func (m *globalManager) NewConn(nodeId uint32, name, auth string, nw Network, addr string) (*RemoteConn, error) {
+func (m *remoteManager) NewConn(nodeId uint32, name, auth string, nw Network, addr string) (*RemoteConn, error) {
 	if !m.ready {
-		return nil, ErrGlobalManagerNotReady
+		return nil, ErrRemoteManagerNotReady
 	}
 	c, err := m.conn.getOutConnOrDial(nodeId, name, auth, nw, addr)
 	if err != nil {
@@ -75,9 +75,9 @@ func (m *globalManager) NewConn(nodeId uint32, name, auth string, nw Network, ad
 	}, nil
 }
 
-func (m *globalManager) GetConn(nodeId uint32, name string) (*RemoteConn, error) {
+func (m *remoteManager) GetConn(nodeId uint32, name string) (*RemoteConn, error) {
 	if !m.ready {
-		return nil, ErrGlobalManagerNotReady
+		return nil, ErrRemoteManagerNotReady
 	}
 	c := m.conn.getOutConn(nodeId, name)
 	if c == nil {
@@ -97,11 +97,16 @@ type RemoteConn struct {
 }
 
 func (m *RemoteConn) ByName(name string) (*RemoteRef, error) {
-	w, err := m.node.send(&ConnControl{
+	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CGetName,
-		GetName: &GetName{
-			Req: &GetName_Request{
-				Name: name,
+		Direction: Direction_Request,
+		Content: &ConnMessage_GetName{
+			GetName: &GetName{
+				Data: &GetName_Req{
+					Req: &GetName_Request{
+						Name: name,
+					},
+				},
 			},
 		},
 	})
@@ -112,10 +117,10 @@ func (m *RemoteConn) ByName(name string) (*RemoteRef, error) {
 	select {
 	case respMsg, more := <-w.respCh:
 		{
-			if !more || respMsg == nil || respMsg.getGetNameResp() == nil {
+			if !more || respMsg == nil || respMsg.GetGetName() == nil || respMsg.GetGetName().GetResp() == nil {
 				return nil, ErrRemoteResponse
 			}
-			resp := respMsg.getGetNameResp()
+			resp := respMsg.GetGetName().GetResp()
 			if !resp.Has {
 				return nil, ErrRemoteActorNotFound
 			}
@@ -150,25 +155,39 @@ func (m RemoteRef) Id() Id {
 }
 
 func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
-	sendProto, ok := msg.(proto.Message)
-	if !ok {
+	sendData := &DataContentType{}
+	switch obj := msg.(type) {
+	case proto.Message:
+		sendAny, err := ptypes.MarshalAny(obj)
+		if err != nil {
+			return err
+		}
+		sendData.Type = DataType_ProtoBuf
+		sendData.Content = &DataContentType_Proto{
+			Proto: sendAny,
+		}
+	case string:
+		sendData.Type = DataType_String
+		sendData.Content = &DataContentType_Str{
+			Str: obj,
+		}
+	default:
 		return ErrRemoteRefAskType
 	}
 
-	sendAny, err := ptypes.MarshalAny(sendProto)
-	if err != nil {
-		return err
-	}
-
 	// send request
-	w, err := m.node.send(&ConnControl{
+	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CSendName,
-		SendName: &SendName{
-			Req: &SendName_Request{
-				FromId:   sender.Id().id,
-				FromName: sender.Id().name,
-				ToName:   m.id.name,
-				SendData: sendAny,
+		Content: &ConnMessage_SendName{
+			SendName: &SendName{
+				Data: &SendName_Req{
+					Req: &SendName_Request{
+						FromId:   sender.Id().id,
+						FromName: sender.Id().name,
+						ToName:   m.id.name,
+						SendData: sendData,
+					},
+				},
 			},
 		},
 	})
@@ -180,10 +199,10 @@ func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 	select {
 	case respMsg, more := <-w.respCh:
 		{
-			if !more || respMsg == nil || respMsg.getSendNameResp() == nil {
+			if !more || respMsg == nil || respMsg.GetSendName() == nil || respMsg.GetSendName().GetResp() == nil {
 				return ErrRemoteResponse
 			}
-			resp := respMsg.getSendNameResp()
+			resp := respMsg.GetSendName().GetResp()
 			var respErr error
 			if resp.HasError {
 				respErr = errors.New(resp.ErrorMessage)
@@ -207,35 +226,65 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 	if answerValue.Kind() != reflect.Ptr {
 		return ErrAnswerType
 	}
-	askProto, ok := ask.(proto.Message)
-	if !ok {
-		return ErrRemoteRefAskType
-	}
 	answerProto, ok := answer.(proto.Message)
 	if !ok {
 		return ErrRemoteRefAnswerType
 	}
 
-	askAny, err := ptypes.MarshalAny(askProto)
-	if err != nil {
-		return err
+	askData := &DataContentType{}
+	switch obj := ask.(type) {
+	case proto.Message:
+		sendAny, err := ptypes.MarshalAny(obj)
+		if err != nil {
+			return err
+		}
+		askData.Type = DataType_ProtoBuf
+		askData.Content = &DataContentType_Proto{
+			Proto: sendAny,
+		}
+	case string:
+		askData.Type = DataType_String
+		askData.Content = &DataContentType_Str{
+			Str: obj,
+		}
+	default:
+		return ErrRemoteRefAskType
 	}
 
-	answerAny, err := ptypes.MarshalAny(answerProto)
-	if err != nil {
-		return err
+	answerData := &DataContentType{}
+	switch obj := answer.(type) {
+	case proto.Message:
+		sendAny, err := ptypes.MarshalAny(obj)
+		if err != nil {
+			return err
+		}
+		answerData.Type = DataType_ProtoBuf
+		answerData.Content = &DataContentType_Proto{
+			Proto: sendAny,
+		}
+	case string:
+		answerData.Type = DataType_String
+		answerData.Content = &DataContentType_Str{
+			Str: obj,
+		}
+	default:
+		return ErrRemoteRefAnswerType
 	}
 
 	// send request
-	w, err := m.node.send(&ConnControl{
+	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CAskName,
-		AskName: &AskName{
-			Req: &AskName_Request{
-				FromId:     sender.Id().id,
-				FromName:   sender.Id().name,
-				ToName:     m.id.name,
-				AskData:    askAny,
-				AnswerData: answerAny,
+		Content: &ConnMessage_AskName{
+			AskName: &AskName{
+				Data: &AskName_Req{
+					Req: &AskName_Request{
+						FromId:     sender.Id().id,
+						FromName:   sender.Id().name,
+						ToName:     m.id.name,
+						AskData:    askData,
+						AnswerData: answerData,
+					},
+				},
 			},
 		},
 	})
@@ -247,15 +296,20 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 	select {
 	case respMsg, more := <-w.respCh:
 		{
-			if !more || respMsg == nil || respMsg.getAskNameResp() == nil {
+			if !more || respMsg == nil || respMsg.GetAskName() == nil || respMsg.GetAskName().GetResp() == nil {
 				return ErrRemoteResponse
 			}
-			resp := respMsg.getAskNameResp()
+			resp := respMsg.GetAskName().GetResp()
 			var respErr error
 			if resp.HasError {
 				respErr = errors.New(resp.ErrorMessage)
 			}
-			err = ptypes.UnmarshalAny(resp.AnswerData, answerProto)
+			switch resp.AnswerData.Type {
+			case DataType_ProtoBuf:
+				err = ptypes.UnmarshalAny(resp.AnswerData.GetProto(), answerProto)
+			case DataType_String:
+			default:
+			}
 			if err != nil {
 				return err
 			}
@@ -273,6 +327,7 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 	}
 }
 
+// todo should any remote actor send a shutdown message?
 func (m *RemoteRef) Shutdown(sender Ref) error {
 	// todo
 	return errors.New("you should not remote close an actor")

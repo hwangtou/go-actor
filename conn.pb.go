@@ -55,12 +55,69 @@ func (ControlType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_f401a58c1fc7ceef, []int{0}
 }
 
+type Direction int32
+
+const (
+	Direction_Request  Direction = 0
+	Direction_Response Direction = 1
+)
+
+var Direction_name = map[int32]string{
+	0: "Request",
+	1: "Response",
+}
+
+var Direction_value = map[string]int32{
+	"Request":  0,
+	"Response": 1,
+}
+
+func (x Direction) String() string {
+	return proto.EnumName(Direction_name, int32(x))
+}
+
+func (Direction) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_f401a58c1fc7ceef, []int{1}
+}
+
+type DataType int32
+
+const (
+	DataType_ProtoBuf DataType = 0
+	DataType_String   DataType = 1
+)
+
+var DataType_name = map[int32]string{
+	0: "ProtoBuf",
+	1: "String",
+}
+
+var DataType_value = map[string]int32{
+	"ProtoBuf": 0,
+	"String":   1,
+}
+
+func (x DataType) String() string {
+	return proto.EnumName(DataType_name, int32(x))
+}
+
+func (DataType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_f401a58c1fc7ceef, []int{2}
+}
+
 type ConnMessage struct {
-	SequenceId           uint64       `protobuf:"varint,1,opt,name=sequence_id,json=sequenceId,proto3" json:"sequence_id,omitempty"`
-	Control              *ConnControl `protobuf:"bytes,2,opt,name=control,proto3" json:"control,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
-	XXX_unrecognized     []byte       `json:"-"`
-	XXX_sizecache        int32        `json:"-"`
+	SequenceId uint64      `protobuf:"varint,1,opt,name=sequence_id,json=sequenceId,proto3" json:"sequence_id,omitempty"`
+	Type       ControlType `protobuf:"varint,2,opt,name=type,proto3,enum=actor.ControlType" json:"type,omitempty"`
+	Direction  Direction   `protobuf:"varint,3,opt,name=direction,proto3,enum=actor.Direction" json:"direction,omitempty"`
+	// Types that are valid to be assigned to Content:
+	//	*ConnMessage_Auth
+	//	*ConnMessage_GetName
+	//	*ConnMessage_SendName
+	//	*ConnMessage_AskName
+	Content              isConnMessage_Content `protobuf_oneof:"content"`
+	XXX_NoUnkeyedLiteral struct{}              `json:"-"`
+	XXX_unrecognized     []byte                `json:"-"`
+	XXX_sizecache        int32                 `json:"-"`
 }
 
 func (m *ConnMessage) Reset()         { *m = ConnMessage{} }
@@ -95,97 +152,108 @@ func (m *ConnMessage) GetSequenceId() uint64 {
 	return 0
 }
 
-func (m *ConnMessage) GetControl() *ConnControl {
-	if m != nil {
-		return m.Control
-	}
-	return nil
-}
-
-type ConnControl struct {
-	Type                 ControlType `protobuf:"varint,1,opt,name=type,proto3,enum=actor.ControlType" json:"type,omitempty"`
-	Auth                 *Auth       `protobuf:"bytes,2,opt,name=auth,proto3" json:"auth,omitempty"`
-	SendName             *SendName   `protobuf:"bytes,3,opt,name=send_name,json=sendName,proto3" json:"send_name,omitempty"`
-	AskName              *AskName    `protobuf:"bytes,4,opt,name=ask_name,json=askName,proto3" json:"ask_name,omitempty"`
-	GetName              *GetName    `protobuf:"bytes,5,opt,name=get_name,json=getName,proto3" json:"get_name,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
-	XXX_unrecognized     []byte      `json:"-"`
-	XXX_sizecache        int32       `json:"-"`
-}
-
-func (m *ConnControl) Reset()         { *m = ConnControl{} }
-func (m *ConnControl) String() string { return proto.CompactTextString(m) }
-func (*ConnControl) ProtoMessage()    {}
-func (*ConnControl) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f401a58c1fc7ceef, []int{1}
-}
-
-func (m *ConnControl) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ConnControl.Unmarshal(m, b)
-}
-func (m *ConnControl) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ConnControl.Marshal(b, m, deterministic)
-}
-func (m *ConnControl) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConnControl.Merge(m, src)
-}
-func (m *ConnControl) XXX_Size() int {
-	return xxx_messageInfo_ConnControl.Size(m)
-}
-func (m *ConnControl) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConnControl.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ConnControl proto.InternalMessageInfo
-
-func (m *ConnControl) GetType() ControlType {
+func (m *ConnMessage) GetType() ControlType {
 	if m != nil {
 		return m.Type
 	}
 	return ControlType_CUnknown
 }
 
-func (m *ConnControl) GetAuth() *Auth {
+func (m *ConnMessage) GetDirection() Direction {
 	if m != nil {
-		return m.Auth
+		return m.Direction
+	}
+	return Direction_Request
+}
+
+type isConnMessage_Content interface {
+	isConnMessage_Content()
+}
+
+type ConnMessage_Auth struct {
+	Auth *Auth `protobuf:"bytes,4,opt,name=auth,proto3,oneof"`
+}
+
+type ConnMessage_GetName struct {
+	GetName *GetName `protobuf:"bytes,5,opt,name=get_name,json=getName,proto3,oneof"`
+}
+
+type ConnMessage_SendName struct {
+	SendName *SendName `protobuf:"bytes,6,opt,name=send_name,json=sendName,proto3,oneof"`
+}
+
+type ConnMessage_AskName struct {
+	AskName *AskName `protobuf:"bytes,7,opt,name=ask_name,json=askName,proto3,oneof"`
+}
+
+func (*ConnMessage_Auth) isConnMessage_Content() {}
+
+func (*ConnMessage_GetName) isConnMessage_Content() {}
+
+func (*ConnMessage_SendName) isConnMessage_Content() {}
+
+func (*ConnMessage_AskName) isConnMessage_Content() {}
+
+func (m *ConnMessage) GetContent() isConnMessage_Content {
+	if m != nil {
+		return m.Content
 	}
 	return nil
 }
 
-func (m *ConnControl) GetSendName() *SendName {
-	if m != nil {
-		return m.SendName
+func (m *ConnMessage) GetAuth() *Auth {
+	if x, ok := m.GetContent().(*ConnMessage_Auth); ok {
+		return x.Auth
 	}
 	return nil
 }
 
-func (m *ConnControl) GetAskName() *AskName {
-	if m != nil {
-		return m.AskName
+func (m *ConnMessage) GetGetName() *GetName {
+	if x, ok := m.GetContent().(*ConnMessage_GetName); ok {
+		return x.GetName
 	}
 	return nil
 }
 
-func (m *ConnControl) GetGetName() *GetName {
-	if m != nil {
-		return m.GetName
+func (m *ConnMessage) GetSendName() *SendName {
+	if x, ok := m.GetContent().(*ConnMessage_SendName); ok {
+		return x.SendName
 	}
 	return nil
+}
+
+func (m *ConnMessage) GetAskName() *AskName {
+	if x, ok := m.GetContent().(*ConnMessage_AskName); ok {
+		return x.AskName
+	}
+	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*ConnMessage) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*ConnMessage_Auth)(nil),
+		(*ConnMessage_GetName)(nil),
+		(*ConnMessage_SendName)(nil),
+		(*ConnMessage_AskName)(nil),
+	}
 }
 
 type Auth struct {
-	Req                  *Auth_Request  `protobuf:"bytes,1,opt,name=req,proto3" json:"req,omitempty"`
-	Resp                 *Auth_Response `protobuf:"bytes,2,opt,name=resp,proto3" json:"resp,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
-	XXX_unrecognized     []byte         `json:"-"`
-	XXX_sizecache        int32          `json:"-"`
+	// Types that are valid to be assigned to Data:
+	//	*Auth_Req
+	//	*Auth_Resp
+	Data                 isAuth_Data `protobuf_oneof:"data"`
+	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
+	XXX_unrecognized     []byte      `json:"-"`
+	XXX_sizecache        int32       `json:"-"`
 }
 
 func (m *Auth) Reset()         { *m = Auth{} }
 func (m *Auth) String() string { return proto.CompactTextString(m) }
 func (*Auth) ProtoMessage()    {}
 func (*Auth) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f401a58c1fc7ceef, []int{2}
+	return fileDescriptor_f401a58c1fc7ceef, []int{1}
 }
 
 func (m *Auth) XXX_Unmarshal(b []byte) error {
@@ -206,18 +274,49 @@ func (m *Auth) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Auth proto.InternalMessageInfo
 
-func (m *Auth) GetReq() *Auth_Request {
+type isAuth_Data interface {
+	isAuth_Data()
+}
+
+type Auth_Req struct {
+	Req *Auth_Request `protobuf:"bytes,1,opt,name=req,proto3,oneof"`
+}
+
+type Auth_Resp struct {
+	Resp *Auth_Response `protobuf:"bytes,2,opt,name=resp,proto3,oneof"`
+}
+
+func (*Auth_Req) isAuth_Data() {}
+
+func (*Auth_Resp) isAuth_Data() {}
+
+func (m *Auth) GetData() isAuth_Data {
 	if m != nil {
-		return m.Req
+		return m.Data
+	}
+	return nil
+}
+
+func (m *Auth) GetReq() *Auth_Request {
+	if x, ok := m.GetData().(*Auth_Req); ok {
+		return x.Req
 	}
 	return nil
 }
 
 func (m *Auth) GetResp() *Auth_Response {
-	if m != nil {
-		return m.Resp
+	if x, ok := m.GetData().(*Auth_Resp); ok {
+		return x.Resp
 	}
 	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*Auth) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*Auth_Req)(nil),
+		(*Auth_Resp)(nil),
+	}
 }
 
 type Auth_Request struct {
@@ -234,7 +333,7 @@ func (m *Auth_Request) Reset()         { *m = Auth_Request{} }
 func (m *Auth_Request) String() string { return proto.CompactTextString(m) }
 func (*Auth_Request) ProtoMessage()    {}
 func (*Auth_Request) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f401a58c1fc7ceef, []int{2, 0}
+	return fileDescriptor_f401a58c1fc7ceef, []int{1, 0}
 }
 
 func (m *Auth_Request) XXX_Unmarshal(b []byte) error {
@@ -294,7 +393,7 @@ func (m *Auth_Response) Reset()         { *m = Auth_Response{} }
 func (m *Auth_Response) String() string { return proto.CompactTextString(m) }
 func (*Auth_Response) ProtoMessage()    {}
 func (*Auth_Response) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f401a58c1fc7ceef, []int{2, 1}
+	return fileDescriptor_f401a58c1fc7ceef, []int{1, 1}
 }
 
 func (m *Auth_Response) XXX_Unmarshal(b []byte) error {
@@ -322,12 +421,102 @@ func (m *Auth_Response) GetIsAuth() bool {
 	return false
 }
 
+type DataContentType struct {
+	Type DataType `protobuf:"varint,1,opt,name=type,proto3,enum=actor.DataType" json:"type,omitempty"`
+	// Types that are valid to be assigned to Content:
+	//	*DataContentType_Proto
+	//	*DataContentType_Str
+	Content              isDataContentType_Content `protobuf_oneof:"content"`
+	XXX_NoUnkeyedLiteral struct{}                  `json:"-"`
+	XXX_unrecognized     []byte                    `json:"-"`
+	XXX_sizecache        int32                     `json:"-"`
+}
+
+func (m *DataContentType) Reset()         { *m = DataContentType{} }
+func (m *DataContentType) String() string { return proto.CompactTextString(m) }
+func (*DataContentType) ProtoMessage()    {}
+func (*DataContentType) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f401a58c1fc7ceef, []int{2}
+}
+
+func (m *DataContentType) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_DataContentType.Unmarshal(m, b)
+}
+func (m *DataContentType) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_DataContentType.Marshal(b, m, deterministic)
+}
+func (m *DataContentType) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DataContentType.Merge(m, src)
+}
+func (m *DataContentType) XXX_Size() int {
+	return xxx_messageInfo_DataContentType.Size(m)
+}
+func (m *DataContentType) XXX_DiscardUnknown() {
+	xxx_messageInfo_DataContentType.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DataContentType proto.InternalMessageInfo
+
+func (m *DataContentType) GetType() DataType {
+	if m != nil {
+		return m.Type
+	}
+	return DataType_ProtoBuf
+}
+
+type isDataContentType_Content interface {
+	isDataContentType_Content()
+}
+
+type DataContentType_Proto struct {
+	Proto *any.Any `protobuf:"bytes,2,opt,name=proto,proto3,oneof"`
+}
+
+type DataContentType_Str struct {
+	Str string `protobuf:"bytes,3,opt,name=str,proto3,oneof"`
+}
+
+func (*DataContentType_Proto) isDataContentType_Content() {}
+
+func (*DataContentType_Str) isDataContentType_Content() {}
+
+func (m *DataContentType) GetContent() isDataContentType_Content {
+	if m != nil {
+		return m.Content
+	}
+	return nil
+}
+
+func (m *DataContentType) GetProto() *any.Any {
+	if x, ok := m.GetContent().(*DataContentType_Proto); ok {
+		return x.Proto
+	}
+	return nil
+}
+
+func (m *DataContentType) GetStr() string {
+	if x, ok := m.GetContent().(*DataContentType_Str); ok {
+		return x.Str
+	}
+	return ""
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*DataContentType) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*DataContentType_Proto)(nil),
+		(*DataContentType_Str)(nil),
+	}
+}
+
 type SendName struct {
-	Req                  *SendName_Request  `protobuf:"bytes,1,opt,name=req,proto3" json:"req,omitempty"`
-	Resp                 *SendName_Response `protobuf:"bytes,2,opt,name=resp,proto3" json:"resp,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}           `json:"-"`
-	XXX_unrecognized     []byte             `json:"-"`
-	XXX_sizecache        int32              `json:"-"`
+	// Types that are valid to be assigned to Data:
+	//	*SendName_Req
+	//	*SendName_Resp
+	Data                 isSendName_Data `protobuf_oneof:"data"`
+	XXX_NoUnkeyedLiteral struct{}        `json:"-"`
+	XXX_unrecognized     []byte          `json:"-"`
+	XXX_sizecache        int32           `json:"-"`
 }
 
 func (m *SendName) Reset()         { *m = SendName{} }
@@ -355,28 +544,59 @@ func (m *SendName) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SendName proto.InternalMessageInfo
 
-func (m *SendName) GetReq() *SendName_Request {
+type isSendName_Data interface {
+	isSendName_Data()
+}
+
+type SendName_Req struct {
+	Req *SendName_Request `protobuf:"bytes,1,opt,name=req,proto3,oneof"`
+}
+
+type SendName_Resp struct {
+	Resp *SendName_Response `protobuf:"bytes,2,opt,name=resp,proto3,oneof"`
+}
+
+func (*SendName_Req) isSendName_Data() {}
+
+func (*SendName_Resp) isSendName_Data() {}
+
+func (m *SendName) GetData() isSendName_Data {
 	if m != nil {
-		return m.Req
+		return m.Data
+	}
+	return nil
+}
+
+func (m *SendName) GetReq() *SendName_Request {
+	if x, ok := m.GetData().(*SendName_Req); ok {
+		return x.Req
 	}
 	return nil
 }
 
 func (m *SendName) GetResp() *SendName_Response {
-	if m != nil {
-		return m.Resp
+	if x, ok := m.GetData().(*SendName_Resp); ok {
+		return x.Resp
 	}
 	return nil
 }
 
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*SendName) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*SendName_Req)(nil),
+		(*SendName_Resp)(nil),
+	}
+}
+
 type SendName_Request struct {
-	FromId               uint32   `protobuf:"varint,1,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"`
-	FromName             string   `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
-	ToName               string   `protobuf:"bytes,3,opt,name=to_name,json=toName,proto3" json:"to_name,omitempty"`
-	SendData             *any.Any `protobuf:"bytes,4,opt,name=send_data,json=sendData,proto3" json:"send_data,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	FromId               uint32           `protobuf:"varint,1,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"`
+	FromName             string           `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	ToName               string           `protobuf:"bytes,3,opt,name=to_name,json=toName,proto3" json:"to_name,omitempty"`
+	SendData             *DataContentType `protobuf:"bytes,4,opt,name=send_data,json=sendData,proto3" json:"send_data,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_unrecognized     []byte           `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
 }
 
 func (m *SendName_Request) Reset()         { *m = SendName_Request{} }
@@ -425,7 +645,7 @@ func (m *SendName_Request) GetToName() string {
 	return ""
 }
 
-func (m *SendName_Request) GetSendData() *any.Any {
+func (m *SendName_Request) GetSendData() *DataContentType {
 	if m != nil {
 		return m.SendData
 	}
@@ -480,11 +700,13 @@ func (m *SendName_Response) GetErrorMessage() string {
 }
 
 type AskName struct {
-	Req                  *AskName_Request  `protobuf:"bytes,1,opt,name=req,proto3" json:"req,omitempty"`
-	Resp                 *AskName_Response `protobuf:"bytes,2,opt,name=resp,proto3" json:"resp,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
-	XXX_unrecognized     []byte            `json:"-"`
-	XXX_sizecache        int32             `json:"-"`
+	// Types that are valid to be assigned to Data:
+	//	*AskName_Req
+	//	*AskName_Resp
+	Data                 isAskName_Data `protobuf_oneof:"data"`
+	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
+	XXX_unrecognized     []byte         `json:"-"`
+	XXX_sizecache        int32          `json:"-"`
 }
 
 func (m *AskName) Reset()         { *m = AskName{} }
@@ -512,29 +734,60 @@ func (m *AskName) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_AskName proto.InternalMessageInfo
 
-func (m *AskName) GetReq() *AskName_Request {
+type isAskName_Data interface {
+	isAskName_Data()
+}
+
+type AskName_Req struct {
+	Req *AskName_Request `protobuf:"bytes,1,opt,name=req,proto3,oneof"`
+}
+
+type AskName_Resp struct {
+	Resp *AskName_Response `protobuf:"bytes,2,opt,name=resp,proto3,oneof"`
+}
+
+func (*AskName_Req) isAskName_Data() {}
+
+func (*AskName_Resp) isAskName_Data() {}
+
+func (m *AskName) GetData() isAskName_Data {
 	if m != nil {
-		return m.Req
+		return m.Data
+	}
+	return nil
+}
+
+func (m *AskName) GetReq() *AskName_Request {
+	if x, ok := m.GetData().(*AskName_Req); ok {
+		return x.Req
 	}
 	return nil
 }
 
 func (m *AskName) GetResp() *AskName_Response {
-	if m != nil {
-		return m.Resp
+	if x, ok := m.GetData().(*AskName_Resp); ok {
+		return x.Resp
 	}
 	return nil
 }
 
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*AskName) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*AskName_Req)(nil),
+		(*AskName_Resp)(nil),
+	}
+}
+
 type AskName_Request struct {
-	FromId               uint32   `protobuf:"varint,1,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"`
-	FromName             string   `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
-	ToName               string   `protobuf:"bytes,3,opt,name=to_name,json=toName,proto3" json:"to_name,omitempty"`
-	AskData              *any.Any `protobuf:"bytes,4,opt,name=ask_data,json=askData,proto3" json:"ask_data,omitempty"`
-	AnswerData           *any.Any `protobuf:"bytes,5,opt,name=answer_data,json=answerData,proto3" json:"answer_data,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	FromId               uint32           `protobuf:"varint,1,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"`
+	FromName             string           `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	ToName               string           `protobuf:"bytes,3,opt,name=to_name,json=toName,proto3" json:"to_name,omitempty"`
+	AskData              *DataContentType `protobuf:"bytes,4,opt,name=ask_data,json=askData,proto3" json:"ask_data,omitempty"`
+	AnswerData           *DataContentType `protobuf:"bytes,5,opt,name=answer_data,json=answerData,proto3" json:"answer_data,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_unrecognized     []byte           `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
 }
 
 func (m *AskName_Request) Reset()         { *m = AskName_Request{} }
@@ -583,14 +836,14 @@ func (m *AskName_Request) GetToName() string {
 	return ""
 }
 
-func (m *AskName_Request) GetAskData() *any.Any {
+func (m *AskName_Request) GetAskData() *DataContentType {
 	if m != nil {
 		return m.AskData
 	}
 	return nil
 }
 
-func (m *AskName_Request) GetAnswerData() *any.Any {
+func (m *AskName_Request) GetAnswerData() *DataContentType {
 	if m != nil {
 		return m.AnswerData
 	}
@@ -598,12 +851,12 @@ func (m *AskName_Request) GetAnswerData() *any.Any {
 }
 
 type AskName_Response struct {
-	HasError             bool     `protobuf:"varint,1,opt,name=has_error,json=hasError,proto3" json:"has_error,omitempty"`
-	ErrorMessage         string   `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	AnswerData           *any.Any `protobuf:"bytes,3,opt,name=answer_data,json=answerData,proto3" json:"answer_data,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	HasError             bool             `protobuf:"varint,1,opt,name=has_error,json=hasError,proto3" json:"has_error,omitempty"`
+	ErrorMessage         string           `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	AnswerData           *DataContentType `protobuf:"bytes,3,opt,name=answer_data,json=answerData,proto3" json:"answer_data,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_unrecognized     []byte           `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
 }
 
 func (m *AskName_Response) Reset()         { *m = AskName_Response{} }
@@ -645,7 +898,7 @@ func (m *AskName_Response) GetErrorMessage() string {
 	return ""
 }
 
-func (m *AskName_Response) GetAnswerData() *any.Any {
+func (m *AskName_Response) GetAnswerData() *DataContentType {
 	if m != nil {
 		return m.AnswerData
 	}
@@ -653,11 +906,13 @@ func (m *AskName_Response) GetAnswerData() *any.Any {
 }
 
 type GetName struct {
-	Req                  *GetName_Request  `protobuf:"bytes,1,opt,name=req,proto3" json:"req,omitempty"`
-	Resp                 *GetName_Response `protobuf:"bytes,2,opt,name=resp,proto3" json:"resp,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
-	XXX_unrecognized     []byte            `json:"-"`
-	XXX_sizecache        int32             `json:"-"`
+	// Types that are valid to be assigned to Data:
+	//	*GetName_Req
+	//	*GetName_Resp
+	Data                 isGetName_Data `protobuf_oneof:"data"`
+	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
+	XXX_unrecognized     []byte         `json:"-"`
+	XXX_sizecache        int32          `json:"-"`
 }
 
 func (m *GetName) Reset()         { *m = GetName{} }
@@ -685,18 +940,49 @@ func (m *GetName) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_GetName proto.InternalMessageInfo
 
-func (m *GetName) GetReq() *GetName_Request {
+type isGetName_Data interface {
+	isGetName_Data()
+}
+
+type GetName_Req struct {
+	Req *GetName_Request `protobuf:"bytes,1,opt,name=req,proto3,oneof"`
+}
+
+type GetName_Resp struct {
+	Resp *GetName_Response `protobuf:"bytes,2,opt,name=resp,proto3,oneof"`
+}
+
+func (*GetName_Req) isGetName_Data() {}
+
+func (*GetName_Resp) isGetName_Data() {}
+
+func (m *GetName) GetData() isGetName_Data {
 	if m != nil {
-		return m.Req
+		return m.Data
+	}
+	return nil
+}
+
+func (m *GetName) GetReq() *GetName_Request {
+	if x, ok := m.GetData().(*GetName_Req); ok {
+		return x.Req
 	}
 	return nil
 }
 
 func (m *GetName) GetResp() *GetName_Response {
-	if m != nil {
-		return m.Resp
+	if x, ok := m.GetData().(*GetName_Resp); ok {
+		return x.Resp
 	}
 	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*GetName) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*GetName_Req)(nil),
+		(*GetName_Resp)(nil),
+	}
 }
 
 type GetName_Request struct {
@@ -741,6 +1027,7 @@ func (m *GetName_Request) GetName() string {
 type GetName_Response struct {
 	Has                  bool     `protobuf:"varint,1,opt,name=has,proto3" json:"has,omitempty"`
 	ActorId              uint32   `protobuf:"varint,2,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	ErrorMessage         string   `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -785,13 +1072,22 @@ func (m *GetName_Response) GetActorId() uint32 {
 	return 0
 }
 
+func (m *GetName_Response) GetErrorMessage() string {
+	if m != nil {
+		return m.ErrorMessage
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterEnum("actor.ControlType", ControlType_name, ControlType_value)
+	proto.RegisterEnum("actor.Direction", Direction_name, Direction_value)
+	proto.RegisterEnum("actor.DataType", DataType_name, DataType_value)
 	proto.RegisterType((*ConnMessage)(nil), "actor.ConnMessage")
-	proto.RegisterType((*ConnControl)(nil), "actor.ConnControl")
 	proto.RegisterType((*Auth)(nil), "actor.Auth")
 	proto.RegisterType((*Auth_Request)(nil), "actor.Auth.Request")
 	proto.RegisterType((*Auth_Response)(nil), "actor.Auth.Response")
+	proto.RegisterType((*DataContentType)(nil), "actor.DataContentType")
 	proto.RegisterType((*SendName)(nil), "actor.SendName")
 	proto.RegisterType((*SendName_Request)(nil), "actor.SendName.Request")
 	proto.RegisterType((*SendName_Response)(nil), "actor.SendName.Response")
@@ -803,51 +1099,61 @@ func init() {
 	proto.RegisterType((*GetName_Response)(nil), "actor.GetName.Response")
 }
 
-func init() { proto.RegisterFile("conn.proto", fileDescriptor_f401a58c1fc7ceef) }
+func init() {
+	proto.RegisterFile("conn.proto", fileDescriptor_f401a58c1fc7ceef)
+}
 
 var fileDescriptor_f401a58c1fc7ceef = []byte{
-	// 679 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x94, 0xd1, 0x6e, 0xd3, 0x3c,
-	0x14, 0xc7, 0xbf, 0xb4, 0x69, 0x93, 0x9c, 0x6e, 0xfb, 0x2a, 0x33, 0xd1, 0xae, 0x03, 0x6d, 0xea,
-	0x04, 0x2a, 0x30, 0x65, 0x62, 0x08, 0x71, 0x3d, 0x15, 0x84, 0x26, 0xc1, 0x24, 0x3c, 0xb8, 0x43,
-	0xaa, 0xbc, 0xc6, 0x6b, 0xa7, 0xad, 0x76, 0x17, 0xbb, 0xaa, 0x7a, 0x09, 0x5c, 0xf2, 0x24, 0xbc,
-	0x01, 0x77, 0xf0, 0x1c, 0x3c, 0x0d, 0xf2, 0xb1, 0xd3, 0x24, 0x1b, 0x82, 0x5d, 0xc0, 0x9d, 0xed,
-	0xff, 0x3f, 0xce, 0x39, 0xbf, 0x73, 0x8e, 0x01, 0x86, 0x52, 0x88, 0x78, 0x9a, 0x4a, 0x2d, 0x49,
-	0x8d, 0x0d, 0xb5, 0x4c, 0x3b, 0x1b, 0x23, 0x29, 0x47, 0x17, 0x7c, 0x0f, 0x0f, 0x4f, 0x66, 0xa7,
-	0x7b, 0x4c, 0x2c, 0xac, 0xa3, 0xfb, 0x1e, 0x1a, 0x7d, 0x29, 0xc4, 0x6b, 0xae, 0x14, 0x1b, 0x71,
-	0xb2, 0x05, 0x0d, 0xc5, 0x2f, 0x67, 0x5c, 0x0c, 0xf9, 0xe0, 0x2c, 0x69, 0x7b, 0xdb, 0x5e, 0xcf,
-	0xa7, 0x90, 0x1d, 0x1d, 0x26, 0x64, 0x17, 0x82, 0xa1, 0x14, 0x3a, 0x95, 0x17, 0xed, 0xca, 0xb6,
-	0xd7, 0x6b, 0xec, 0x93, 0x18, 0xff, 0x11, 0x9b, 0x5b, 0xfa, 0x56, 0xa1, 0x99, 0xa5, 0xfb, 0xc3,
-	0xb3, 0xd7, 0x3b, 0x81, 0xdc, 0x07, 0x5f, 0x2f, 0xa6, 0x1c, 0xef, 0x5d, 0x2b, 0x7e, 0x6a, 0xd4,
-	0xb7, 0x8b, 0x29, 0xa7, 0xa8, 0x93, 0x2d, 0xf0, 0xd9, 0x4c, 0x8f, 0xdd, 0x2f, 0x1a, 0xce, 0x77,
-	0x30, 0xd3, 0x63, 0x8a, 0x02, 0xd9, 0x85, 0x48, 0x71, 0x91, 0x0c, 0x04, 0x9b, 0xf0, 0x76, 0x15,
-	0x5d, 0xff, 0x3b, 0xd7, 0x31, 0x17, 0xc9, 0x11, 0x9b, 0x70, 0x1a, 0x2a, 0xb7, 0x22, 0x0f, 0x20,
-	0x64, 0xea, 0xdc, 0x9a, 0x7d, 0x34, 0xaf, 0x65, 0x57, 0xaa, 0x73, 0xf4, 0x06, 0xcc, 0x2e, 0x8c,
-	0x75, 0xc4, 0xb5, 0xb5, 0xd6, 0x4a, 0xd6, 0x97, 0x5c, 0x5b, 0xeb, 0xc8, 0x2e, 0xba, 0x1f, 0x2a,
-	0xe0, 0x9b, 0x90, 0xc8, 0x3d, 0xa8, 0xa6, 0xfc, 0x12, 0x93, 0x6a, 0xec, 0xdf, 0x2a, 0x04, 0x1b,
-	0x53, 0x03, 0x4e, 0x69, 0x6a, 0x74, 0xd2, 0x03, 0x3f, 0xe5, 0x6a, 0xea, 0x92, 0x5a, 0x2f, 0xfb,
-	0xd4, 0x54, 0x0a, 0xc5, 0x29, 0x3a, 0x3a, 0x1f, 0x3d, 0x08, 0xdc, 0xa7, 0x64, 0x1b, 0x56, 0x4e,
-	0x53, 0x39, 0x19, 0x08, 0x99, 0x2c, 0x4b, 0xb2, 0x4a, 0xc1, 0x9c, 0x1d, 0xc9, 0xc4, 0x94, 0xe4,
-	0x0e, 0x80, 0x96, 0x4b, 0xbd, 0x82, 0x7a, 0xa8, 0xa5, 0x53, 0x37, 0x21, 0x32, 0x0d, 0x91, 0x93,
-	0x8a, 0x68, 0x68, 0x0e, 0x30, 0xdb, 0x0e, 0x84, 0x53, 0xa6, 0xd4, 0x5c, 0xa6, 0x09, 0x82, 0x89,
-	0xe8, 0x72, 0xdf, 0xd9, 0x81, 0x30, 0x0b, 0x8b, 0xb4, 0x20, 0x38, 0x53, 0x03, 0x2c, 0x89, 0xf9,
-	0x7f, 0x48, 0xeb, 0x67, 0xca, 0x04, 0xde, 0xfd, 0x56, 0x81, 0xf0, 0x38, 0xc7, 0x5c, 0xe0, 0xd0,
-	0xba, 0x52, 0x8e, 0x32, 0x8b, 0xdd, 0x12, 0x8b, 0xf6, 0x75, 0x6f, 0x89, 0xc7, 0xe7, 0x02, 0x8f,
-	0x16, 0x04, 0xc8, 0x63, 0x89, 0xa2, 0x6e, 0xb6, 0x36, 0x51, 0x0b, 0xca, 0x24, 0x5a, 0xb1, 0xc9,
-	0x20, 0x25, 0x13, 0x5a, 0x0b, 0x02, 0xc3, 0x28, 0x67, 0x50, 0xd7, 0x12, 0x85, 0xc7, 0xae, 0x91,
-	0x12, 0xa6, 0x99, 0xeb, 0x8d, 0xf5, 0xd8, 0x8e, 0x4b, 0x9c, 0x8d, 0x4b, 0x7c, 0x20, 0x16, 0xb6,
-	0x9b, 0x9e, 0x33, 0xcd, 0x3a, 0xaf, 0x0a, 0x60, 0x36, 0x21, 0x1a, 0x33, 0x35, 0xe0, 0x69, 0x2a,
-	0x53, 0x87, 0x26, 0x1c, 0x33, 0xf5, 0xc2, 0xec, 0xc9, 0x0e, 0xac, 0xa2, 0x30, 0x98, 0xd8, 0xe9,
-	0x72, 0x51, 0xad, 0xe0, 0xa1, 0x9b, 0xb8, 0xee, 0x97, 0x2a, 0x04, 0xae, 0x0b, 0x49, 0xaf, 0x08,
-	0xf0, 0x76, 0xb9, 0x45, 0xcb, 0xfc, 0x1e, 0x95, 0xf8, 0xb5, 0xae, 0x59, 0x4b, 0xf8, 0xbe, 0xff,
-	0x3b, 0x7c, 0x7b, 0x76, 0xb2, 0xfe, 0x48, 0xcf, 0xcc, 0x97, 0x81, 0x47, 0x9e, 0x42, 0x83, 0x09,
-	0x35, 0xe7, 0xa9, 0xfd, 0xa6, 0xf6, 0x9b, 0x6f, 0xc0, 0x1a, 0x91, 0xf9, 0x27, 0xef, 0x6f, 0x42,
-	0xbf, 0x1a, 0x45, 0xf5, 0x66, 0x51, 0x74, 0xbf, 0x7a, 0x10, 0xb8, 0x67, 0xe0, 0xd7, 0xb5, 0x72,
-	0xe2, 0x4d, 0x6a, 0x95, 0x5b, 0x4b, 0xb5, 0xba, 0x9b, 0x97, 0x8a, 0x80, 0x8f, 0xc4, 0x3d, 0x4c,
-	0x00, 0xd7, 0x9d, 0x67, 0x05, 0x0c, 0x4d, 0xa8, 0x8e, 0x99, 0x72, 0x00, 0xcc, 0x92, 0x6c, 0x40,
-	0x88, 0x97, 0xe7, 0xef, 0x40, 0x80, 0xfb, 0xc3, 0xe4, 0xe1, 0x1b, 0x7c, 0x88, 0xb3, 0x67, 0x96,
-	0xac, 0x40, 0xd8, 0x7f, 0x27, 0xce, 0x85, 0x9c, 0x8b, 0xe6, 0x7f, 0x24, 0x82, 0x5a, 0xdf, 0x8c,
-	0x73, 0xb3, 0x42, 0x56, 0x21, 0xea, 0x67, 0x63, 0xd8, 0xac, 0xa2, 0xcf, 0x75, 0x55, 0xd3, 0xc7,
-	0x9d, 0x8b, 0xbb, 0x59, 0x3b, 0xa9, 0x23, 0xa7, 0x27, 0x3f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x06,
-	0x50, 0x2f, 0xfd, 0x71, 0x06, 0x00, 0x00,
+	// 810 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x95, 0xcf, 0x6f, 0xd3, 0x48,
+	0x14, 0xc7, 0xe3, 0xd8, 0x89, 0xed, 0xe7, 0xfe, 0xb0, 0x66, 0x57, 0x4d, 0x9a, 0xee, 0x6a, 0xb3,
+	0xed, 0xaa, 0x5b, 0x05, 0x70, 0x45, 0x7a, 0xe0, 0xdc, 0xa6, 0x88, 0x54, 0x82, 0x0a, 0x5c, 0xb8,
+	0x21, 0x45, 0xd3, 0x78, 0x9a, 0x44, 0x6d, 0x66, 0x52, 0xcf, 0x44, 0x55, 0xae, 0x20, 0x8e, 0xfd,
+	0x8b, 0x90, 0x38, 0x71, 0xe5, 0x0f, 0xe1, 0xbf, 0x40, 0xf3, 0xc3, 0x8e, 0x93, 0x02, 0xea, 0x01,
+	0x6e, 0x33, 0xef, 0x7d, 0x3d, 0xf3, 0xe6, 0xfb, 0x79, 0x33, 0x06, 0xe8, 0x33, 0x4a, 0xa3, 0x49,
+	0xca, 0x04, 0x43, 0x15, 0xdc, 0x17, 0x2c, 0x6d, 0x6c, 0x0e, 0x18, 0x1b, 0x5c, 0x91, 0x7d, 0x15,
+	0x3c, 0x9f, 0x5e, 0xec, 0x63, 0x3a, 0xd3, 0x8a, 0xed, 0x4f, 0x65, 0x08, 0x3a, 0x8c, 0xd2, 0x17,
+	0x84, 0x73, 0x3c, 0x20, 0xe8, 0x1f, 0x08, 0x38, 0xb9, 0x9e, 0x12, 0xda, 0x27, 0xbd, 0x51, 0x52,
+	0xb7, 0x9a, 0xd6, 0x9e, 0x13, 0x43, 0x16, 0x3a, 0x49, 0xd0, 0x2e, 0x38, 0x62, 0x36, 0x21, 0xf5,
+	0x72, 0xd3, 0xda, 0x5b, 0x6b, 0xa3, 0x48, 0xed, 0x10, 0x75, 0x18, 0x15, 0x29, 0xbb, 0x7a, 0x3d,
+	0x9b, 0x90, 0x58, 0xe5, 0x51, 0x04, 0x7e, 0x32, 0x4a, 0x49, 0x5f, 0x8c, 0x18, 0xad, 0xdb, 0x4a,
+	0x1c, 0x1a, 0xf1, 0x71, 0x16, 0x8f, 0xe7, 0x12, 0xf4, 0x2f, 0x38, 0x78, 0x2a, 0x86, 0x75, 0xa7,
+	0x69, 0xed, 0x05, 0xed, 0xc0, 0x48, 0x0f, 0xa7, 0x62, 0xd8, 0x2d, 0xc5, 0x2a, 0x85, 0x1e, 0x80,
+	0x37, 0x20, 0xa2, 0x47, 0xf1, 0x98, 0xd4, 0x2b, 0x4a, 0xb6, 0x66, 0x64, 0xcf, 0x88, 0x38, 0xc5,
+	0x63, 0xd2, 0x2d, 0xc5, 0xee, 0x40, 0x0f, 0xe5, 0xfe, 0x9c, 0xd0, 0x44, 0xab, 0xab, 0x4a, 0xbd,
+	0x6e, 0xd4, 0x67, 0x84, 0x26, 0x46, 0xee, 0x71, 0x33, 0x96, 0x8b, 0x63, 0x7e, 0xa9, 0xe5, 0xee,
+	0xc2, 0xe2, 0x87, 0xfc, 0x32, 0x5b, 0x1c, 0xeb, 0xe1, 0x91, 0x0f, 0x6e, 0x9f, 0x51, 0x41, 0xa8,
+	0xd8, 0xbe, 0x2d, 0x83, 0x23, 0xab, 0x44, 0xff, 0x83, 0x9d, 0x92, 0x6b, 0xe5, 0x58, 0xd0, 0xfe,
+	0xa3, 0x50, 0x7f, 0x14, 0x4b, 0xf7, 0xb8, 0xe8, 0x96, 0x62, 0xa9, 0x40, 0x2d, 0x70, 0x52, 0xc2,
+	0x27, 0xca, 0xc1, 0xa0, 0xfd, 0xe7, 0xa2, 0x92, 0x4f, 0x18, 0xe5, 0x72, 0x2f, 0xa5, 0x69, 0xbc,
+	0xb3, 0xc0, 0x35, 0x9f, 0xa3, 0x26, 0xac, 0x5c, 0xa4, 0x6c, 0xdc, 0xa3, 0x2c, 0xc9, 0xd9, 0xac,
+	0xc6, 0x20, 0x63, 0xa7, 0x2c, 0x91, 0x6c, 0xfe, 0x02, 0x10, 0x2c, 0xcf, 0x97, 0x55, 0xde, 0x13,
+	0xcc, 0x64, 0xb7, 0xc0, 0x97, 0xad, 0xa1, 0x8f, 0x28, 0x89, 0xf8, 0xb1, 0x27, 0x03, 0xea, 0xf8,
+	0x0d, 0xf0, 0x26, 0x98, 0xf3, 0x1b, 0x96, 0x26, 0x0a, 0x81, 0x1f, 0xe7, 0xf3, 0xc6, 0x0e, 0x78,
+	0x59, 0x61, 0xa8, 0x06, 0xee, 0x88, 0xf7, 0x14, 0x29, 0xb9, 0xbf, 0x17, 0x57, 0x47, 0x5c, 0x96,
+	0x7e, 0x54, 0x05, 0x27, 0xc1, 0x02, 0x6f, 0xbf, 0xb7, 0x60, 0xfd, 0x18, 0x0b, 0xdc, 0xd1, 0xfe,
+	0xc8, 0x8e, 0x40, 0x3b, 0xa6, 0x67, 0x2c, 0xd5, 0x06, 0x19, 0x06, 0xa9, 0x2a, 0x34, 0xcc, 0x43,
+	0xa8, 0xa8, 0x96, 0xcc, 0x7d, 0xd1, 0x4d, 0x1b, 0x65, 0x4d, 0x1b, 0x1d, 0xd2, 0x59, 0xb7, 0x14,
+	0x6b, 0x11, 0x42, 0x60, 0x73, 0x91, 0xea, 0x63, 0x48, 0x63, 0xb9, 0x48, 0x8b, 0x54, 0xbe, 0x94,
+	0xc1, 0x3b, 0x9b, 0xa3, 0x2d, 0x90, 0xa9, 0x2d, 0x35, 0xc1, 0x32, 0x9d, 0x68, 0x81, 0x4e, 0xfd,
+	0xae, 0x7a, 0x89, 0xd0, 0x6d, 0x81, 0x50, 0x0d, 0x5c, 0x45, 0x28, 0x87, 0x53, 0x95, 0x53, 0x6d,
+	0xbd, 0x46, 0x27, 0xad, 0x2f, 0x6b, 0x7b, 0x15, 0x37, 0x59, 0x5e, 0x0d, 0x5c, 0x49, 0x6d, 0x4e,
+	0xa5, 0x2a, 0x98, 0x4a, 0x1c, 0x98, 0x16, 0x96, 0xbe, 0x9a, 0x7b, 0xb1, 0x51, 0xf0, 0xae, 0xe0,
+	0xb0, 0xee, 0x63, 0x19, 0x6c, 0x3c, 0x2f, 0xc0, 0xda, 0x02, 0x7f, 0x88, 0x79, 0x8f, 0xa4, 0x29,
+	0x4b, 0x0d, 0x2e, 0x6f, 0x88, 0xf9, 0x53, 0x39, 0x47, 0x3b, 0xb0, 0xaa, 0x12, 0xbd, 0xb1, 0xbe,
+	0xfa, 0xa6, 0xae, 0x15, 0x15, 0x34, 0xcf, 0x41, 0x4e, 0xf5, 0xa3, 0x0d, 0xae, 0xb9, 0x07, 0xa8,
+	0x55, 0xb4, 0x73, 0x63, 0xf1, 0x92, 0x2c, 0xbb, 0xf9, 0x68, 0xc1, 0xcd, 0xda, 0x1d, 0xf1, 0x92,
+	0x99, 0x9f, 0x7f, 0x9f, 0x99, 0x8f, 0xf5, 0xfd, 0xbe, 0x87, 0x97, 0xf2, 0x96, 0xcb, 0x18, 0x7a,
+	0x02, 0x01, 0xa6, 0xfc, 0x86, 0xa4, 0xfa, 0xab, 0xca, 0x4f, 0xbf, 0x02, 0x2d, 0x55, 0x0c, 0x3e,
+	0x58, 0xbf, 0x12, 0xc2, 0x72, 0x1d, 0xf6, 0x7d, 0xeb, 0xc8, 0xe9, 0x7d, 0xb5, 0xc0, 0x35, 0x4f,
+	0xe4, 0xf7, 0xe9, 0x99, 0xe4, 0xfd, 0xe8, 0xcd, 0xc5, 0x4b, 0xf4, 0xfe, 0x9e, 0xc3, 0x43, 0xe0,
+	0x28, 0x06, 0x96, 0x3a, 0x8e, 0x1a, 0x37, 0xde, 0x16, 0x4c, 0x09, 0xc1, 0x1e, 0x62, 0x6e, 0xec,
+	0x90, 0x43, 0xb4, 0x09, 0x9e, 0x5a, 0x7e, 0xfe, 0x72, 0xb9, 0x6a, 0x7e, 0x92, 0xdc, 0x35, 0xc9,
+	0xfe, 0x71, 0xa7, 0xb6, 0x5e, 0xa9, 0xff, 0x59, 0xf6, 0x33, 0x42, 0x2b, 0xe0, 0x75, 0xde, 0xd0,
+	0x4b, 0xca, 0x6e, 0x68, 0x58, 0x42, 0x3e, 0x54, 0x3a, 0xf2, 0xb5, 0x0a, 0xcb, 0x68, 0x15, 0xfc,
+	0x4e, 0x76, 0xab, 0x43, 0x5b, 0xe9, 0x4c, 0x5b, 0x86, 0x8e, 0x9a, 0x99, 0x63, 0x86, 0x95, 0xd6,
+	0x2e, 0xf8, 0xf9, 0x2f, 0x0b, 0x05, 0xf9, 0x21, 0xc3, 0x92, 0xd4, 0x65, 0x47, 0x0a, 0xad, 0xd6,
+	0x7f, 0xe0, 0x65, 0x6f, 0x9a, 0xcc, 0xbc, 0x94, 0x0f, 0xd5, 0xd1, 0xf4, 0x22, 0x2c, 0x21, 0x80,
+	0xea, 0x99, 0x48, 0x47, 0x74, 0x10, 0x5a, 0xe7, 0x55, 0xf5, 0x80, 0x1d, 0x7c, 0x0b, 0x00, 0x00,
+	0xff, 0xff, 0x88, 0xd2, 0xce, 0x3a, 0xa8, 0x07, 0x00, 0x00,
 }

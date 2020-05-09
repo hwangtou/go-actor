@@ -4,11 +4,6 @@ package actor;
 
 import "google/protobuf/any.proto";
 
-message ConnMessage {
-    uint64 sequence_id = 1;
-    ConnControl control = 2;
-}
-
 enum ControlType {
     CUnknown = 0;
     CAuth = 2;
@@ -17,12 +12,21 @@ enum ControlType {
     CGetName = 5;
 }
 
-message ConnControl {
-    ControlType type = 1;
-    Auth auth = 2;
-    SendName send_name = 3;
-    AskName ask_name = 4;
-    GetName get_name = 5;
+enum Direction {
+    Request = 0;
+    Response = 1;
+}
+
+message ConnMessage {
+    uint64 sequence_id = 1;
+    ControlType type = 2;
+    Direction direction = 3;
+    oneof content {
+        Auth auth = 4;
+        GetName get_name = 5;
+        SendName send_name = 6;
+        AskName ask_name = 7;
+    }
 }
 
 message Auth {
@@ -35,8 +39,25 @@ message Auth {
     message Response {
         bool is_auth = 1;
     }
-    Request req = 1;
-    Response resp = 2;
+    oneof data {
+        Request req = 1;
+        Response resp = 2;
+    }
+}
+
+// Send & Ask of Connection
+
+enum DataType {
+    ProtoBuf = 0;
+    String = 1;
+}
+
+message DataContentType {
+    DataType type = 1;
+    oneof content {
+        google.protobuf.Any proto = 2;
+        string str = 3;
+    }
 }
 
 message SendName {
@@ -44,14 +65,16 @@ message SendName {
         uint32 from_id = 1;
         string from_name = 2;
         string to_name = 3;
-        google.protobuf.Any send_data = 4;
+        DataContentType send_data = 4;
     }
     message Response {
         bool has_error = 1;
         string error_message = 2;
     }
-    Request req = 1;
-    Response resp = 2;
+    oneof data {
+        Request req = 1;
+        Response resp = 2;
+    }
 }
 
 message AskName {
@@ -59,16 +82,18 @@ message AskName {
         uint32 from_id = 1;
         string from_name = 2;
         string to_name = 3;
-        google.protobuf.Any ask_data = 4;
-        google.protobuf.Any answer_data = 5;
+        DataContentType ask_data = 4;
+        DataContentType answer_data = 5;
     }
     message Response {
         bool has_error = 1;
         string error_message = 2;
-        google.protobuf.Any answer_data = 3;
+        DataContentType answer_data = 3;
     }
-    Request req = 1;
-    Response resp = 2;
+    oneof data {
+        Request req = 1;
+        Response resp = 2;
+    }
 }
 
 message GetName {
@@ -78,7 +103,10 @@ message GetName {
     message Response {
         bool has = 1;
         uint32 actor_id = 2;
+        string error_message = 3;
     }
-    Request req = 1;
-    Response resp = 2;
+    oneof data {
+        Request req = 1;
+        Response resp = 2;
+    }
 }

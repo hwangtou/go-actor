@@ -4,6 +4,7 @@
 package actor
 
 import (
+	"fmt"
 	"log"
 	"reflect"
 	"sync"
@@ -291,7 +292,14 @@ func (m *LocalRef) logMessageError(err error, msg message) {
 }
 
 func (m *LocalRef) spawn() {
-	// todo defer handle panic, because handle function might not safe
+	// defer handle panic, because handle function might not safe
+	defer func() {
+		msg := ""
+		if r := recover(); r != nil {
+			msg = fmt.Sprintf(", message: %v", r)
+		}
+		log.Printf("Actor %s recover from panic%s\n", m.id.name, msg)
+	}()
 	m.actor.Started()
 	for {
 		// fetch new message

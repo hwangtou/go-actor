@@ -30,9 +30,9 @@ successfully. Developer should use this name to find an actor, because actors
 might be shutdown and startup again, although they are in a same name, but the
 actor id must be changed.
 
-You can also use the actor.Global, to connect to other actor.Global, finding
-an specific actor with name, send it message, or ask it for an answer. Now global
-message should be a ProtoBuf message, ProtoBuf is used in actor.Global serializing.
+You can also use the actor.Remote, to connect to other actor.Remote, finding
+an specific actor with name, send it message, or ask it for an answer. Now remote
+message should be a ProtoBuf message, ProtoBuf is used in actor.Remote serializing.
 */
 package actor
 
@@ -93,8 +93,8 @@ type Ask interface {
 // Go-Actor API
 //
 
-// Fast way to get the pointer of globalManager.
-var Global *globalManager
+// Fast way to get the pointer of remoteManager.
+var Remote *remoteManager
 
 // To Spawn an actor locally, with an actor constructor function, and argument to parse
 // into the actor StartUp method.
@@ -181,7 +181,7 @@ func (m Id) Name() string {
 
 func init() {
 	defaultSys = NewSystem()
-	Global = &defaultSys.global
+	Remote = &defaultSys.remote
 }
 
 // Go-actor provides a default system instance for use.
@@ -191,7 +191,7 @@ var defaultSys *system
 // It's the core of go-actor.
 type system struct {
 	locals localsManager
-	global globalManager
+	remote remoteManager
 }
 
 // Developer can create system instance if needed, but not recommended.
@@ -203,7 +203,7 @@ func NewSystem() *system {
 
 func (m *system) init() {
 	m.locals.init(m)
-	m.global.init(m)
+	m.remote.init(m)
 }
 
 func (m *system) Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
@@ -230,8 +230,8 @@ func (m *system) ByName(name string) *LocalRef {
 	return m.locals.getName(name)
 }
 
-func (m *system) Global() *globalManager {
-	return &m.global
+func (m *system) Remote() *remoteManager {
+	return &m.remote
 }
 
 // todo: to watch an id, notify when the actor of this id has been shutdown.
