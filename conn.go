@@ -41,7 +41,7 @@ type conn struct {
 	remote      *remoteManager
 	ready       bool
 	listener    net.Listener
-	inNames     map[string]string
+	inAuth      map[string]string
 	inConn      map[uint32]map[string]*inNode
 	inConnLock  sync.RWMutex
 	inMessageCh chan *inReply
@@ -58,7 +58,7 @@ func (m *conn) init(nw Network, listen string) error {
 	}
 	m.ready = true
 	m.listener = l
-	m.inNames = make(map[string]string)
+	m.inAuth = make(map[string]string)
 	m.inConn = make(map[uint32]map[string]*inNode)
 	m.inMessageCh = make(chan *inReply, inMessageChannelLength)
 	m.outConn = make(map[uint32]map[string]*outNode)
@@ -366,7 +366,7 @@ func (m *conn) inConnHandler() {
 						break
 					}
 					req := packet.GetAuth().GetReq()
-					password, has := m.inNames[req.ConnName]
+					password, has := m.inAuth[req.ConnName]
 					if !has || password != req.Password {
 						log.Println("actor.Remote.listen auth invalid,", packet) // todo: desc
 						// todo reply error
@@ -493,7 +493,7 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 func (m *conn) close() {
 	m.ready = false
 	m.listener.Close()
-	m.inNames = map[string]string{}
+	m.inAuth = map[string]string{}
 	m.inConnLock.Lock()
 	for nodeId, nodes := range m.inConn {
 		for name, node := range nodes {
@@ -611,7 +611,6 @@ func (m *outNode) auth(nodeId uint32, name, password string) error {
 func (m *outNode) loop() {
 	for {
 		packet, more := <-m.reader.recvCh
-		log.Println(">>>>>>>>>>out node loop packet,", packet)
 		if !more {
 			return
 		}

@@ -6,12 +6,11 @@ import (
 )
 
 var testSys *system
-var testAllowedNames map[string]string = map[string]string{
-	"default": "",
-}
 
 func TestRemote_DefaultInit(t *testing.T) {
-	if err := Remote.DefaultInit(1); err != nil {
+	if err := Remote.Init(NodeConfig{
+		Id: 1,
+	}); err != nil {
 		t.Error(err)
 		return
 	}
@@ -20,14 +19,21 @@ func TestRemote_DefaultInit(t *testing.T) {
 func TestRemote_SysInit(t *testing.T) {
 	testSys = &system{}
 	testSys.init()
-	if err := testSys.Remote().Init(2, TCP, "0.0.0.0:12346", testAllowedNames); err != nil {
+	if err := testSys.Remote().Init(NodeConfig{
+		Id:            2,
+		ListenNetwork: TCP4,
+		ListenAddress: "127.0.0.1:12346",
+		Authorization: map[string]string{
+			"": "",
+		},
+	}); err != nil {
 		t.Error(err)
 		return
 	}
 }
 
 func TestRemote_DefaultConnSys(t *testing.T) {
-	rConn, err := Remote.NewConn(2, "default", "", TCP, "0.0.0.0:12346")
+	rConn, err := Remote.NewConn(2, "", "", TCP, "0.0.0.0:12346")
 	if err != nil {
 		t.Error(err)
 		return

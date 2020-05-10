@@ -28,66 +28,6 @@ func (m *remoteManager) init(sys *system) {
 	m.ready = false
 }
 
-func (m *remoteManager) DefaultInit(nodeId uint32) error {
-	if m.ready {
-		return ErrRemoteManagerNotReady
-	}
-	m.conn.remote = m
-	m.nodeId = nodeId
-	if err := m.conn.init(TCP, "0.0.0.0:12345"); err != nil {
-		return err
-	}
-	m.conn.inNames["default"] = ""
-	m.ready = true
-	return nil
-}
-
-func (m *remoteManager) Init(nodeId uint32, nw Network, routerAddr string, allowedNames map[string]string) error {
-	if m.ready {
-		return ErrRemoteManagerNotReady
-	}
-	m.conn.remote = m
-	m.nodeId = nodeId
-	if err := m.conn.init(nw, routerAddr); err != nil {
-		return err
-	}
-	m.conn.inNames = allowedNames
-	m.ready = true
-	return nil
-}
-
-func (m *remoteManager) Close() {
-	m.ready = false
-	m.nodeId = 0
-	m.conn.close()
-}
-
-func (m *remoteManager) NewConn(nodeId uint32, name, auth string, nw Network, addr string) (*RemoteConn, error) {
-	if !m.ready {
-		return nil, ErrRemoteManagerNotReady
-	}
-	c, err := m.conn.getOutConnOrDial(nodeId, name, auth, nw, addr)
-	if err != nil {
-		return nil, ErrConnError
-	}
-	return &RemoteConn{
-		node: c,
-	}, nil
-}
-
-func (m *remoteManager) GetConn(nodeId uint32, name string) (*RemoteConn, error) {
-	if !m.ready {
-		return nil, ErrRemoteManagerNotReady
-	}
-	c := m.conn.getOutConn(nodeId, name)
-	if c == nil {
-		return nil, ErrRemoteConnNotFound
-	}
-	return &RemoteConn{
-		node: c,
-	}, nil
-}
-
 //
 // Remote Node
 //
@@ -98,7 +38,7 @@ type RemoteConn struct {
 
 func (m *RemoteConn) ByName(name string) (*RemoteRef, error) {
 	w, err := m.node.send(&ConnMessage{
-		Type: ControlType_CGetName,
+		Type:      ControlType_CGetName,
 		Direction: Direction_Request,
 		Content: &ConnMessage_GetName{
 			GetName: &GetName{
@@ -176,14 +116,19 @@ func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 	}
 
 	// send request
+	senderId, senderName := uint32(0), ""
+	if sender != nil {
+		senderId = sender.Id().id
+		senderName = sender.Id().name
+	}
 	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CSendName,
 		Content: &ConnMessage_SendName{
 			SendName: &SendName{
 				Data: &SendName_Req{
 					Req: &SendName_Request{
-						FromId:   sender.Id().id,
-						FromName: sender.Id().name,
+						FromId:   senderId,
+						FromName: senderName,
 						ToName:   m.id.name,
 						SendData: sendData,
 					},

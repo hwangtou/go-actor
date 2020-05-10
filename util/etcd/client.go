@@ -13,19 +13,19 @@ const (
 
 var (
 	ErrKeyExisted = errors.New("key existed")
-	ErrValue = errors.New("invalid value")
+	ErrValue      = errors.New("invalid value")
 )
 
 type client struct {
-	cli *etcClient.Client
-	ctx context.Context
+	cli       *etcClient.Client
+	ctx       context.Context
 	ctxCancel context.CancelFunc
 }
 
 type value struct {
-	cli *client
-	kv *etcClient.KV
-	key string
+	cli  *client
+	kv   *etcClient.KV
+	key  string
 	resp *etcClient.GetResponse
 }
 
@@ -48,8 +48,8 @@ func (m *value) Delete() (err error) {
 func NewClient(endpoints []string) (cli *client, err error) {
 	m := &client{}
 	m.cli, err = etcClient.New(etcClient.Config{
-		Endpoints:            endpoints,
-		DialTimeout:          dialTimeout * time.Second,
+		Endpoints:   endpoints,
+		DialTimeout: dialTimeout * time.Second,
 	})
 	m.ctx, m.ctxCancel = context.WithCancel(context.Background())
 	return m, err

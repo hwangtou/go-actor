@@ -1,6 +1,9 @@
 // Copyright 2020 Tou.Hwang. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+package actor
+
 /*
 The goal of go-actor is to make it easier for developers to use the actor model.
 
@@ -34,7 +37,117 @@ You can also use the actor.Remote, to connect to other actor.Remote, finding
 an specific actor with name, send it message, or ask it for an answer. Now remote
 message should be a ProtoBuf message, ProtoBuf is used in actor.Remote serializing.
 */
-package actor
+
+//
+// Go-Actor API
+//
+
+// To Spawn an actor locally, with an actor constructor function, and argument to parse
+// into the actor StartUp method.
+func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
+	return defaultSys.Spawn(fn, arg)
+}
+
+// Just like what the Spawn function do. And there is an name parameter, to register what
+// name the local actor is. This spawn function will try to register the name first, if
+// failed, it will return ErrNameRegistered.
+// This spawn function is tread-safe, it guarantee when StartUp method has been called,
+// the name is already bound to the local actor.
+func SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
+	return defaultSys.SpawnWithName(fn, name, arg)
+}
+
+// Register function, it try to bind a name to a local actor via its reference.
+// Registered name is unique in an actor-system, developer cannot registered the same
+// name, until the name has been un-registered.
+func Register(ref *LocalRef, name string) error {
+	return defaultSys.Register(ref, name)
+}
+
+// Get a local reference with its actor id.
+// Not Recommended to use
+func ById(id uint32) *LocalRef {
+	return defaultSys.ById(id)
+}
+
+// Once an local actor has registered to a name, we can get its reference by name.
+func ByName(name string) *LocalRef {
+	return defaultSys.ByName(name)
+}
+
+// Fast way to get the pointer of remoteManager.
+var Remote *remoteManager
+
+type NodeConfig struct {
+	Id uint32
+	ListenNetwork Network
+	ListenAddress string
+	Authorization map[string]string
+}
+
+const (
+	NodeDefaultNetwork = TCP
+	NodeDefaultAddress = "127.0.0.1:12345"
+)
+
+func (m *remoteManager) Init(config NodeConfig) error {
+	if m.ready {
+		return ErrRemoteManagerNotReady
+	}
+	if config.ListenNetwork == "" {
+		config.ListenNetwork = NodeDefaultNetwork
+	}
+	if config.ListenAddress == "" {
+		config.ListenAddress = NodeDefaultAddress
+	}
+	if config.Authorization == nil || len(config.Authorization) == 0 {
+		config.Authorization = map[string]string{
+			"": "",
+		}
+	}
+	m.conn.remote = m
+	m.nodeId = config.Id
+	if err := m.conn.init(config.ListenNetwork, config.ListenAddress); err != nil {
+		return err
+	}
+	m.conn.inAuth = config.Authorization
+	m.ready = true
+	return nil
+}
+
+func (m *remoteManager) Close() {
+	m.ready = false
+	m.nodeId = 0
+	m.conn.close()
+}
+
+func (m *remoteManager) NewConn(nodeId uint32, name, auth string, nw Network, addr string) (*RemoteConn, error) {
+	if !m.ready {
+		return nil, ErrRemoteManagerNotReady
+	}
+	c, err := m.conn.getOutConnOrDial(nodeId, name, auth, nw, addr)
+	if err != nil {
+		return nil, ErrConnError
+	}
+	return &RemoteConn{
+		node: c,
+	}, nil
+}
+
+func (m *remoteManager) GetConn(nodeId uint32, name string) (*RemoteConn, error) {
+	if !m.ready {
+		return nil, ErrRemoteManagerNotReady
+	}
+	c := m.conn.getOutConn(nodeId, name)
+	if c == nil {
+		return nil, ErrRemoteConnNotFound
+	}
+	return &RemoteConn{
+		node: c,
+	}, nil
+}
+
+
 
 //
 // DEVELOPER TO IMPLEMENT
@@ -89,46 +202,6 @@ type Ask interface {
 	HandleAsk(sender Ref, ask interface{}) (answer interface{}, err error)
 }
 
-//
-// Go-Actor API
-//
-
-// Fast way to get the pointer of remoteManager.
-var Remote *remoteManager
-
-// To Spawn an actor locally, with an actor constructor function, and argument to parse
-// into the actor StartUp method.
-func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
-	return defaultSys.Spawn(fn, arg)
-}
-
-// Just like what the Spawn function do. And there is an name parameter, to register what
-// name the local actor is. This spawn function will try to register the name first, if
-// failed, it will return ErrNameRegistered.
-// This spawn function is tread-safe, it guarantee when StartUp method has been called,
-// the name is already bound to the local actor.
-func SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
-	return defaultSys.SpawnWithName(fn, name, arg)
-}
-
-// Register function, it try to bind a name to a local actor via its reference.
-// Registered name is unique in an actor-system, developer cannot registered the same
-// name, until the name has been un-registered.
-func Register(ref *LocalRef, name string) error {
-	return defaultSys.Register(ref, name)
-}
-
-// Get a local reference with its actor id.
-// Not Recommended to use
-func ById(id uint32) *LocalRef {
-	return defaultSys.ById(id)
-}
-
-// Once an local actor has registered to a name, we can get its reference by name.
-func ByName(name string) *LocalRef {
-	return defaultSys.ByName(name)
-}
-
 // Ref is short for reference.
 // It's a kind of instances that interact with the real actor instance.
 // There are two type of Ref: *LocalRef and *RemoteRef.
@@ -173,65 +246,6 @@ func (m Id) ActorId() uint32 {
 // Use ByName function to get the reference of the actor, if the actor still alive.
 func (m Id) Name() string {
 	return m.name
-}
-
-//
-// PRIVATE
-//
-
-func init() {
-	defaultSys = NewSystem()
-	Remote = &defaultSys.remote
-}
-
-// Go-actor provides a default system instance for use.
-// Developer can create system instance if needed, but not recommended.
-var defaultSys *system
-
-// It's the core of go-actor.
-type system struct {
-	locals localsManager
-	remote remoteManager
-}
-
-// Developer can create system instance if needed, but not recommended.
-func NewSystem() *system {
-	defaultSys = &system{}
-	defaultSys.init()
-	return defaultSys
-}
-
-func (m *system) init() {
-	m.locals.init(m)
-	m.remote.init(m)
-}
-
-func (m *system) Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
-	return m.locals.spawnActor(fn, "", arg)
-}
-
-func (m *system) SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
-	return m.locals.spawnActor(fn, name, arg)
-}
-
-func (m *system) Register(ref Ref, name string) error {
-	lr, ok := ref.(*LocalRef)
-	if !ok {
-		return ErrNotLocalActor
-	}
-	return m.locals.setNameRunning(lr, name)
-}
-
-func (m *system) ById(id uint32) *LocalRef {
-	return m.locals.getActorRef(id)
-}
-
-func (m *system) ByName(name string) *LocalRef {
-	return m.locals.getName(name)
-}
-
-func (m *system) Remote() *remoteManager {
-	return &m.remote
 }
 
 // todo: to watch an id, notify when the actor of this id has been shutdown.

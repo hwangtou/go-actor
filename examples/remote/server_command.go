@@ -11,7 +11,9 @@ func main() {
 	ch := make(chan os.Signal)
 	log.Println("Actor system initializing")
 
-	if err := actor.Remote.DefaultInit(1); err != nil {
+	if err := actor.Remote.Init(actor.NodeConfig{
+		Id: 1,
+	}); err != nil {
 		log.Fatalln("Actor system remote default init failed,", err)
 	}
 
@@ -51,4 +53,3 @@ func (m *command) HandleSend(sender actor.Ref, message interface{}) {
 func (m *command) Shutdown() {
 	log.Println("Command actor is shutting down")
 }
-

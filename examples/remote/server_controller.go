@@ -11,13 +11,14 @@ func main() {
 	ch := make(chan os.Signal)
 	log.Println("Actor system initializing")
 
-	if err := actor.Remote.Init(2, actor.TCP4, "127.0.0.1:12346", map[string]string{
-		"default": "",
+	if err := actor.Remote.Init(actor.NodeConfig{
+		Id:            2,
+		ListenAddress: "127.0.0.1:12346",
 	}); err != nil {
 		log.Fatalln("Actor system remote default init failed,", err)
 	}
 
-	conn, err := actor.Remote.NewConn(1, "default", "", actor.TCP4, "127.0.0.1:12345")
+	conn, err := actor.Remote.NewConn(1, "", "", actor.TCP4, "127.0.0.1:12345")
 	if err != nil {
 		log.Fatalln("Actor system get remote default failed,", err)
 	}
