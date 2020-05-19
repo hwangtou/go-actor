@@ -48,6 +48,17 @@ func (m *command) Started() {
 
 func (m *command) HandleSend(sender actor.Ref, message interface{}) {
 	log.Println("Command actor has receive send:", message)
+	//switch msg := message.(type) {
+	//case string:
+	//	switch msg {
+	//	case ""
+	//	}
+	//}
+}
+
+func (m *command) HandleAsk(sender actor.Ref, ask interface{}) (answer interface{}, err error) {
+	log.Println("Command actor has been asked:", ask)
+	return "everything gone well", nil
 }
 
 func (m *command) Shutdown() {

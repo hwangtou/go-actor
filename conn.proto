@@ -33,8 +33,7 @@ message Auth {
     message Request {
         uint32 from_node_id = 1;
         uint32 to_node_id = 2;
-        string conn_name = 3;
-        string password = 4;
+        string password = 3;
     }
     message Response {
         bool is_auth = 1;

@@ -171,10 +171,6 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 	if answerValue.Kind() != reflect.Ptr {
 		return ErrAnswerType
 	}
-	answerProto, ok := answer.(proto.Message)
-	if !ok {
-		return ErrRemoteRefAnswerType
-	}
 
 	askData := &DataContentType{}
 	switch obj := ask.(type) {
@@ -207,24 +203,29 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 		answerData.Content = &DataContentType_Proto{
 			Proto: sendAny,
 		}
-	case string:
+	case *string:
 		answerData.Type = DataType_String
 		answerData.Content = &DataContentType_Str{
-			Str: obj,
+			Str: *obj,
 		}
 	default:
 		return ErrRemoteRefAnswerType
 	}
 
 	// send request
+	senderId, senderName := uint32(0), ""
+	if sender != nil {
+		senderId = sender.Id().id
+		senderName = sender.Id().name
+	}
 	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CAskName,
 		Content: &ConnMessage_AskName{
 			AskName: &AskName{
 				Data: &AskName_Req{
 					Req: &AskName_Request{
-						FromId:     sender.Id().id,
-						FromName:   sender.Id().name,
+						FromId:     senderId,
+						FromName:   senderName,
 						ToName:     m.id.name,
 						AskData:    askData,
 						AnswerData: answerData,
@@ -249,19 +250,27 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 			if resp.HasError {
 				respErr = errors.New(resp.ErrorMessage)
 			}
-			switch resp.AnswerData.Type {
-			case DataType_ProtoBuf:
-				err = ptypes.UnmarshalAny(resp.AnswerData.GetProto(), answerProto)
-			case DataType_String:
-			default:
+			if resp.AnswerData != nil {
+				switch resp.AnswerData.Type {
+				case DataType_ProtoBuf:
+					answerProto := resp.AnswerData.GetProto()
+					err = ptypes.UnmarshalAny(resp.AnswerData.GetProto(), answerProto)
+					if err != nil {
+						return err
+					}
+					if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(answerProto).Type()) {
+						return ErrRemoteRefAnswerType
+					}
+					answerValue.Elem().Set(reflect.ValueOf(answerProto))
+				case DataType_String:
+					answerString := resp.AnswerData.GetStr()
+					if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(answerString).Type()) {
+						return ErrRemoteRefAnswerType
+					}
+					answerValue.Elem().SetString(answerString)
+				default:
+				}
 			}
-			if err != nil {
-				return err
-			}
-			if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(answerProto).Type()) {
-				return ErrRemoteRefAnswerType
-			}
-			answerValue.Elem().Set(reflect.ValueOf(answerProto))
 			return respErr
 		}
 	case <-time.After(requestTimeout):

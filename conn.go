@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/golang/protobuf/ptypes/any"
 	"io"
 	"log"
 	"net"
@@ -37,15 +38,16 @@ const (
 	inMessageChannelLength = 10
 )
 
+// Connection
 type conn struct {
 	remote      *remoteManager
 	ready       bool
 	listener    net.Listener
-	inAuth      map[string]string
-	inConn      map[uint32]map[string]*inNode
+	inAuth      string
+	inConn      map[uint32]*inNode
 	inConnLock  sync.RWMutex
 	inMessageCh chan *inReply
-	outConn     map[uint32]map[string]*outNode
+	outConn     map[uint32]*outNode
 	outConnLock sync.RWMutex
 }
 
@@ -58,10 +60,10 @@ func (m *conn) init(nw Network, listen string) error {
 	}
 	m.ready = true
 	m.listener = l
-	m.inAuth = make(map[string]string)
-	m.inConn = make(map[uint32]map[string]*inNode)
+	m.inAuth = ""
+	m.inConn = make(map[uint32]*inNode)
 	m.inMessageCh = make(chan *inReply, inMessageChannelLength)
-	m.outConn = make(map[uint32]map[string]*outNode)
+	m.outConn = make(map[uint32]*outNode)
 	go m.inMessageHandler()
 	go m.inConnHandler()
 	return nil
@@ -172,6 +174,7 @@ func (m *conn) inMessageHandler() {
 					askNameWrapper := msg.inMessage.GetAskName()
 					resp := &AskName_Response{
 						HasError: true,
+						AnswerData: &DataContentType{},
 					}
 					replyMessage.Type = ControlType_CAskName
 					replyMessage.Content = &ConnMessage_AskName{
@@ -204,7 +207,6 @@ func (m *conn) inMessageHandler() {
 					var (
 						askFromRef    *RemoteRef
 						askMessage    interface{}
-						answerMessage interface{}
 						answerError   error
 					)
 					if askName.FromId != 0 {
@@ -245,31 +247,42 @@ func (m *conn) inMessageHandler() {
 					// Answer
 					switch askName.AnswerData.Type {
 					case DataType_ProtoBuf:
-						answerData := askName.AnswerData.GetProto()
-						answerDataProto, err := ptypes.Empty(answerData)
+						var answerProto *any.Any
+						resp.AnswerData.Type = DataType_ProtoBuf
+						emptyAnswerProto := askName.AnswerData.GetProto()
+						answerInstance, err := ptypes.Empty(emptyAnswerProto)
 						if err != nil {
 							answerError = err
 							break
 						}
-						err = ptypes.UnmarshalAny(answerData, answerDataProto)
+						err = ptypes.UnmarshalAny(emptyAnswerProto, answerInstance)
 						if err != nil {
 							answerError = err
 							break
 						}
-						answerMessage = answerDataProto
+						// Send local actor
+						answerError = localRef.Ask(askFromRef, askMessage, &answerInstance)
+						answerProto, err = ptypes.MarshalAny(answerInstance)
+						if err != nil {
+							answerError = err
+							break
+						}
+						resp.AnswerData.Content = &DataContentType_Proto{
+							Proto: answerProto,
+						}
 					case DataType_String:
-						answerMessage = askName.AnswerData.GetStr()
+						answerString := ""
+						resp.AnswerData.Type = DataType_String
+						// Send local actor
+						answerError = localRef.Ask(askFromRef, askMessage, &answerString)
+						resp.AnswerData.Content = &DataContentType_Str{
+							Str: answerString,
+						}
 					default:
 						answerError = errors.New("unsupported type") // todo
 						break
 					}
-					if answerError != nil {
-						resp.ErrorMessage = answerError.Error()
-						break
-					}
-
-					// Send local actor
-					answerError = localRef.Ask(askFromRef, askMessage, &answerMessage)
+					// Error
 					if answerError != nil {
 						resp.ErrorMessage = answerError.Error()
 					} else {
@@ -334,7 +347,6 @@ func (m *conn) inConnHandler() {
 				ready:  true,
 				global: m.remote,
 				nodeId: 0,
-				name:   "",
 				conn: connSafe{
 					Conn:   conn,
 					Mutex:  sync.Mutex{},
@@ -366,8 +378,7 @@ func (m *conn) inConnHandler() {
 						break
 					}
 					req := packet.GetAuth().GetReq()
-					password, has := m.inAuth[req.ConnName]
-					if !has || password != req.Password {
+					if req.Password != m.inAuth {
 						log.Println("actor.Remote.listen auth invalid,", packet) // todo: desc
 						// todo reply error
 						break
@@ -383,14 +394,10 @@ func (m *conn) inConnHandler() {
 						break
 					}
 					n.nodeId = req.FromNodeId
-					n.name = req.ConnName
-					if _, has := m.inConn[n.nodeId]; !has {
-						m.inConn[n.nodeId] = make(map[string]*inNode)
-					}
-					if oldN, has := m.inConn[n.nodeId][n.name]; has {
+					if oldN, has := m.inConn[n.nodeId]; has {
 						oldN.conn.safeClose()
 					}
-					m.inConn[n.nodeId][n.name] = n
+					m.inConn[n.nodeId] = n
 					sequenceId = packet.SequenceId
 					// todo reply okay
 					isAuth = true
@@ -434,22 +441,19 @@ func (m *conn) inConnHandler() {
 	}
 }
 
-func (m *conn) getOutConn(nodeId uint32, name string) *outNode {
+func (m *conn) getOutConn(nodeId uint32) *outNode {
 	if nodeId == 0 {
 		return nil
 	}
 
 	// get conn
 	m.outConnLock.RLock()
-	if _, has := m.outConn[nodeId]; !has {
-		m.outConn[nodeId] = make(map[string]*outNode)
-	}
-	n, _ := m.outConn[nodeId][name]
+	n, _ := m.outConn[nodeId]
 	m.outConnLock.RUnlock()
 	return n
 }
 
-func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, addr string) (*outNode, error) {
+func (m *conn) getOutConnOrDial(nodeId uint32, auth string, nw Network, addr string) (*outNode, error) {
 	if nodeId == 0 {
 		return nil, ErrNodeId
 	}
@@ -458,10 +462,7 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 	defer m.outConnLock.Unlock()
 
 	// get conn
-	if _, has := m.outConn[nodeId]; !has {
-		m.outConn[nodeId] = make(map[string]*outNode)
-	}
-	n, has := m.outConn[nodeId][name]
+	n, has := m.outConn[nodeId]
 	if has {
 		return n, nil
 	}
@@ -471,7 +472,6 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 		ready:   false,
 		global:  m.remote,
 		nodeId:  nodeId,
-		name:    name,
 		nw:      nw,
 		addr:    addr,
 		conn:    connSafe{},
@@ -481,9 +481,9 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 		seqId:   0,
 		seqLock: sync.Mutex{},
 	}
-	m.outConn[nodeId][name] = n
-	if err := n.dial(name, auth); err != nil {
-		delete(m.outConn[nodeId], name)
+	m.outConn[nodeId] = n
+	if err := n.dial(auth); err != nil {
+		delete(m.outConn, nodeId)
 		return nil, err
 	}
 	log.Println("actor.Remote.getOutConnOrDial new conn")
@@ -493,25 +493,19 @@ func (m *conn) getOutConnOrDial(nodeId uint32, name, auth string, nw Network, ad
 func (m *conn) close() {
 	m.ready = false
 	m.listener.Close()
-	m.inAuth = map[string]string{}
+	m.inAuth = ""
 	m.inConnLock.Lock()
-	for nodeId, nodes := range m.inConn {
-		for name, node := range nodes {
-			node.conn.safeClose()
-			delete(nodes, name)
-		}
+	for nodeId, node := range m.inConn {
+		node.conn.safeClose()
 		delete(m.inConn, nodeId)
 	}
 	m.inConnLock.Unlock()
 	m.outConnLock.Lock()
-	for nodeId, nodes := range m.outConn {
-		for name, node := range nodes {
-			node.conn.safeClose()
-			for id, seq := range node.seq {
-				seq.respCh <- nil
-				delete(node.seq, id)
-			}
-			delete(nodes, name)
+	for nodeId, node := range m.outConn {
+		node.conn.safeClose()
+		for id, seq := range node.seq {
+			seq.respCh <- nil
+			delete(node.seq, id)
 		}
 		delete(m.outConn, nodeId)
 	}
@@ -526,7 +520,6 @@ type outNode struct {
 	ready   bool
 	global  *remoteManager
 	nodeId  uint32
-	name    string
 	nw      Network
 	addr    string
 	conn    connSafe
@@ -544,7 +537,7 @@ type seqWrapper struct {
 	createdAt time.Time
 }
 
-func (m *outNode) dial(name, password string) (err error) {
+func (m *outNode) dial(password string) (err error) {
 	m.ready = false
 	m.conn.closed = false
 	m.conn.Conn, err = net.Dial(string(m.nw), m.addr)
@@ -555,7 +548,7 @@ func (m *outNode) dial(name, password string) (err error) {
 	m.reader.init(&m.conn)
 	m.writer.init(&m.conn)
 
-	err = m.auth(m.nodeId, name, password)
+	err = m.auth(m.nodeId, password)
 	if err != nil {
 		log.Println("actor.Remote.getOutConnOrDial password error,", err)
 		m.conn.safeClose()
@@ -567,7 +560,7 @@ func (m *outNode) dial(name, password string) (err error) {
 	return nil
 }
 
-func (m *outNode) auth(nodeId uint32, name, password string) error {
+func (m *outNode) auth(nodeId uint32, password string) error {
 	// send authentication
 	if err := m.writer.send(&ConnMessage{
 		SequenceId: 0,
@@ -579,7 +572,6 @@ func (m *outNode) auth(nodeId uint32, name, password string) error {
 					Req: &Auth_Request{
 						FromNodeId: m.global.nodeId,
 						ToNodeId:   nodeId,
-						ConnName:   name,
 						Password:   password,
 					},
 				},
@@ -677,7 +669,6 @@ type inNode struct {
 	ready  bool
 	global *remoteManager
 	nodeId uint32
-	name   string
 	conn   connSafe
 	reader connReader
 	writer connWriter

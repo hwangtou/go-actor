@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	// TODO 0 is for debug use, at least 1 in production
+	// 1 is minimum size you should set, at least 1 in production
+	// TODO: Set buffer size you need.
 	actorBufferSize = 1
 )
 
@@ -411,7 +412,9 @@ func (m *LocalRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 		e := answerValue.Elem()
 		e.Set(reflect.Zero(e.Type()))
 	} else {
-		if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(resp.msgContent).Type()) {
+		answerType := answerValue.Elem().Type()
+		respAnswerType := reflect.ValueOf(resp.msgContent).Type()
+		if !answerType.AssignableTo(respAnswerType) {
 			return ErrAnswerType
 		}
 		answerValue.Elem().Set(reflect.ValueOf(resp.msgContent))

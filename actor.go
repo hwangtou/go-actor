@@ -5,9 +5,11 @@
 package actor
 
 /*
+Go-actor的目标是让开发者能够更加容易地使用actor模型。
 The goal of go-actor is to make it easier for developers to use the actor model.
 
-Package go-actor provides a portable for creating an actor, with which developer
+Go-actor为
+With go-actor, it's convinience to create actors, with which developer
 can receive message that send from actor-system. Actors implements Ask interface
 can be asking for, and answer it. Package go-actor initializes a default actor
 system, this system help developer to manage actors and their life cycle.
@@ -38,24 +40,54 @@ an specific actor with name, send it message, or ask it for an answer. Now remot
 message should be a ProtoBuf message, ProtoBuf is used in actor.Remote serializing.
 */
 
+
 //
 // Go-Actor API
 //
 
-// To Spawn an actor locally, with an actor constructor function, and argument to parse
-// into the actor StartUp method.
+
+// 运行一个本地actor
+// Spawns an local actor
+//
+// Params:
+//   #1 创建actor实例的函数或者闭包。
+//      A function or a closure to create an actor instance.
+//   #2 可以为空的actor启动参数，这个参数会在actor启动的时候，通过StartUp方法传递给actor。
+//      A nullable actor startup argument, that will pass to the actor via StartUp method.
+//
+// Returns:
+//   #1 如果启动成功，返回本地actor的引用。
+//      A reference of local actor, if it starts up successfully.
+//   #2 如果启动失败，返回error。
+//      Error message if starts failed.
 func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
 	return defaultSys.Spawn(fn, arg)
 }
 
-// Just like what the Spawn function do. And there is an name parameter, to register what
-// name the local actor is. This spawn function will try to register the name first, if
-// failed, it will return ErrNameRegistered.
-// This spawn function is tread-safe, it guarantee when StartUp method has been called,
-// the name is already bound to the local actor.
+
+// 运行一个带名称的本地actor
+// Spawns an local actor with name
+//
+// 这个函数能保证actor名称是唯一的。即如果成功返回一个actor的引用，那么该名称也唯一绑定到该actor上。
+// This function guarantees the name of actor is unique, if it returns succeed.
+//
+// Params:
+//   #1 创建actor实例的函数或者闭包。
+//      A function or a closure to create an actor instance.
+//   #2 尝试注册本地系统的名称。
+//      A name that trys to register to local system.
+//   #3 可以为空的actor启动参数，这个参数会在actor启动的时候，通过StartUp方法传递给actor。
+//      A nullable actor startup argument, that will pass to the actor via StartUp method.
+//
+// Returns:
+//   #1 如果启动成功，返回本地actor的引用。
+//      A reference of local actor, if it starts up successfully.
+//   #2 如果启动失败，返回error。
+//      Error message if starts failed.
 func SpawnWithName(fn func() Actor, name string, arg interface{}) (*LocalRef, error) {
 	return defaultSys.SpawnWithName(fn, name, arg)
 }
+
 
 // Register function, it try to bind a name to a local actor via its reference.
 // Registered name is unique in an actor-system, developer cannot registered the same
@@ -79,10 +111,10 @@ func ByName(name string) *LocalRef {
 var Remote *remoteManager
 
 type NodeConfig struct {
-	Id uint32
+	Id            uint32
 	ListenNetwork Network
 	ListenAddress string
-	Authorization map[string]string
+	AuthToken     string
 }
 
 const (
@@ -100,17 +132,12 @@ func (m *remoteManager) Init(config NodeConfig) error {
 	if config.ListenAddress == "" {
 		config.ListenAddress = NodeDefaultAddress
 	}
-	if config.Authorization == nil || len(config.Authorization) == 0 {
-		config.Authorization = map[string]string{
-			"": "",
-		}
-	}
 	m.conn.remote = m
 	m.nodeId = config.Id
 	if err := m.conn.init(config.ListenNetwork, config.ListenAddress); err != nil {
 		return err
 	}
-	m.conn.inAuth = config.Authorization
+	m.conn.inAuth = config.AuthToken
 	m.ready = true
 	return nil
 }
@@ -121,11 +148,11 @@ func (m *remoteManager) Close() {
 	m.conn.close()
 }
 
-func (m *remoteManager) NewConn(nodeId uint32, name, auth string, nw Network, addr string) (*RemoteConn, error) {
+func (m *remoteManager) Dial(config NodeConfig) (*RemoteConn, error) {
 	if !m.ready {
 		return nil, ErrRemoteManagerNotReady
 	}
-	c, err := m.conn.getOutConnOrDial(nodeId, name, auth, nw, addr)
+	c, err := m.conn.getOutConnOrDial(config.Id, config.AuthToken, config.ListenNetwork, config.ListenAddress)
 	if err != nil {
 		return nil, ErrConnError
 	}
@@ -134,11 +161,11 @@ func (m *remoteManager) NewConn(nodeId uint32, name, auth string, nw Network, ad
 	}, nil
 }
 
-func (m *remoteManager) GetConn(nodeId uint32, name string) (*RemoteConn, error) {
+func (m *remoteManager) GetConn(nodeId uint32) (*RemoteConn, error) {
 	if !m.ready {
 		return nil, ErrRemoteManagerNotReady
 	}
-	c := m.conn.getOutConn(nodeId, name)
+	c := m.conn.getOutConn(nodeId)
 	if c == nil {
 		return nil, ErrRemoteConnNotFound
 	}
@@ -146,7 +173,6 @@ func (m *remoteManager) GetConn(nodeId uint32, name string) (*RemoteConn, error)
 		node: c,
 	}, nil
 }
-
 
 
 //
@@ -189,6 +215,7 @@ type Actor interface {
 	Shutdown()
 }
 
+
 //
 // DEVELOPER TO IMPLEMENT
 //
@@ -201,6 +228,7 @@ type Ask interface {
 	// Answer parameter should be a pointer reference to object.
 	HandleAsk(sender Ref, ask interface{}) (answer interface{}, err error)
 }
+
 
 // Ref is short for reference.
 // It's a kind of instances that interact with the real actor instance.
