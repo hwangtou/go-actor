@@ -349,6 +349,10 @@ func (m LocalRef) Id() Id {
 	return m.id
 }
 
+func (m LocalRef) Status() Status {
+	return m.status
+}
+
 func (m *LocalRef) receiving(msg *message) (err error) {
 	defer func() {
 		if recover() != nil {

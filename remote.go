@@ -94,6 +94,11 @@ func (m RemoteRef) Id() Id {
 	return m.id
 }
 
+func (m RemoteRef) Status() Status {
+	// todo
+	return Running
+}
+
 func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 	sendData := &DataContentType{}
 	switch obj := msg.(type) {

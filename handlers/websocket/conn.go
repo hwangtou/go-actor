@@ -15,14 +15,6 @@ var (
 	ErrStartUpUnsupportedType = errors.New("websocket conn start up unsupported type")
 )
 
-const (
-	TextMessage   = websocket.TextMessage
-	BinaryMessage = websocket.BinaryMessage
-	CloseMessage  = websocket.CloseMessage
-	PingMessage   = websocket.PingMessage
-	PongMessage   = websocket.PongMessage
-)
-
 //
 // Actor
 //
@@ -114,30 +106,58 @@ func (m *connection) StartUp(self *actor.LocalRef, arg interface{}) error {
 func (m *connection) Started() {
 	go func() {
 		for {
+			conn := m.conn
+			if conn == nil {
+				goto exit
+			}
 			// deadline
-			if err := m.conn.SetReadDeadline(m.readTimeout); err != nil {
+			if err := conn.SetReadDeadline(m.readTimeout); err != nil {
 				log.Println("websocket conn set read deadline error,", err)
-				return
+				goto exit
 			}
 			// receive
-			msg := &ReceiveMessage{}
-			msg.MessageType, msg.Buffer, msg.Error = m.conn.ReadMessage()
-			if msg.Error != nil {
-				// TODO might be block
-				if err := m.self.Shutdown(m.self); err != nil {
-					log.Println("websocket conn close error,", err)
-					return
+			var msg interface{}
+			msgType, msgBuf, err := conn.ReadMessage()
+			if err != nil {
+				goto exit
+			}
+			switch msgType {
+			case websocket.TextMessage:
+				msg = string(msgBuf)
+			case websocket.BinaryMessage:
+				msg = msgBuf
+			case websocket.CloseMessage:
+				goto exit
+			case websocket.PingMessage:
+				if err := conn.WriteControl(websocket.PongMessage, []byte{}, time.Time{}); err != nil {
+					goto exit
 				}
+				continue
+			case websocket.PongMessage:
+				continue
 			}
 			// send
 			if err := m.self.Send(m.self, msg); err != nil {
 				log.Println("websocket conn send error,", err)
-				// TODO might be block
-				if err := m.self.Shutdown(m.self); err != nil {
-					log.Println("websocket conn close error,", err)
-					return
-				}
+				goto exit
+			}
+		}
+		exit:
+		if m.conn != nil {
+			if err := m.conn.Close(); err != nil {
+				log.Println("websocket conn close error,", err)
 				return
+			}
+		}
+		if m.self.Status() == actor.Running {
+			if err := m.self.Shutdown(m.self); err != nil {
+				log.Println("websocket conn close error,", err)
+				return
+			}
+		}
+		if m.forwarding != nil {
+			if err := m.forwarding.Send(m.self, &ReceiveClosed{}); err != nil {
+				log.Println("websocket conn close forward error,", err)
 			}
 		}
 	}()
@@ -180,14 +200,14 @@ func (m *connection) HandleAsk(sender actor.Ref, ask interface{}) (answer interf
 }
 
 func (m *connection) Shutdown() {
-	time.AfterFunc(100*time.Millisecond, func() {
-		if err := m.conn.Close(); err != nil {
-			log.Println("websocket conn close error,", err)
-		}
-		if err := m.forwarding.Send(m.self, &ReceiveClosed{}); err != nil {
-			log.Println("websocket conn close forward error,", err)
-		}
-	})
+	if m.conn == nil {
+		return
+	}
+	conn := m.conn
+	m.conn = nil
+	if err := conn.Close(); err != nil {
+		log.Println("websocket conn close error,", err)
+	}
 }
 
 //

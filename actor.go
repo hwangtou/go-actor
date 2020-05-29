@@ -75,7 +75,7 @@ func Spawn(fn func() Actor, arg interface{}) (*LocalRef, error) {
 //   #1 创建actor实例的函数或者闭包。
 //      A function or a closure to create an actor instance.
 //   #2 尝试注册本地系统的名称。
-//      A name that trys to register to local system.
+//      A name that tries to register to local system.
 //   #3 可以为空的actor启动参数，这个参数会在actor启动的时候，通过StartUp方法传递给actor。
 //      A nullable actor startup argument, that will pass to the actor via StartUp method.
 //
@@ -238,6 +238,8 @@ type Ask interface {
 type Ref interface {
 	// Get Id of an actor
 	Id() Id
+	// Get running status of an actor
+	Status() Status
 	// Send message to actor via reference. HandleSend method of the actor will be called.
 	Send(sender Ref, msg interface{}) error
 	// Ask an actor via reference. HandleAsk method of the actor will be called.
