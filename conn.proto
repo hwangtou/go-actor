@@ -48,14 +48,37 @@ message Auth {
 
 enum DataType {
     ProtoBuf = 0;
-    String = 1;
+    Bool = 1;
+    Bytes = 2;  // UInt8 Slice
+    String = 3;
+    Int = 4;
+    Int8 = 5;
+    Int16 = 6;
+    Int32 = 7;
+    Int64 = 8;
+    UInt = 9;
+    UInt8 = 10;
+    UInt16 = 11;
+    UInt32 = 12;
+    UInt64 = 13;
+    Float32 = 14;
+    Float64 = 15;
+    Complex64 = 16;
+    Complex128 = 17;
+    Slice = 18;
+    Map = 19;
 }
 
 message DataContentType {
     DataType type = 1;
     oneof content {
         google.protobuf.Any proto = 2;
-        string str = 3;
+        bool b = 3;
+        bytes bs = 4;
+        string str = 5;
+        int64 i64 = 6;
+        uint64 u64 = 7;
+        double f64 = 8;
     }
 }
 
