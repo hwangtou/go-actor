@@ -15,6 +15,11 @@ var (
 	ErrStartUpUnsupportedType = errors.New("websocket conn start up unsupported type")
 )
 
+const (
+	BinaryMessage = websocket.BinaryMessage
+	TextMessage = websocket.TextMessage
+)
+
 //
 // Actor
 //
@@ -135,24 +140,32 @@ func (m *connection) Started() {
 				continue
 			case websocket.PongMessage:
 				continue
+			default:
+				log.Println("websocket unsupport message")
+				continue
 			}
 			// send
-			if err := m.self.Send(m.self, msg); err != nil {
-				log.Println("websocket conn send error,", err)
-				goto exit
+			//if err := m.self.Send(m.self, msg); err != nil {
+			//	log.Println("websocket conn send error,", err)
+			//	goto exit
+			//}
+			if m.forwarding != nil {
+				if err := m.forwarding.Send(m.self, msg); err != nil {
+					log.Println("websocket conn close forward error,", err)
+					goto exit
+				}
 			}
 		}
-		exit:
+	exit:
 		if m.conn != nil {
 			if err := m.conn.Close(); err != nil {
 				log.Println("websocket conn close error,", err)
-				return
 			}
 		}
+		m.conn = nil
 		if m.self.Status() == actor.Running {
 			if err := m.self.Shutdown(m.self); err != nil {
 				log.Println("websocket conn close error,", err)
-				return
 			}
 		}
 		if m.forwarding != nil {
@@ -167,13 +180,10 @@ func (m *connection) HandleSend(sender actor.Ref, message interface{}) {
 	var err error
 	switch msg := message.(type) {
 	// Handle Send Message from other actor
-	case *SendBytes:
-		err = m.sendMessage(websocket.BinaryMessage, msg.Buffer)
-	case *SendText:
-		err = m.sendMessage(websocket.TextMessage, []byte(msg.Text))
-	// Handle receive message from connection
-	case *ReceiveMessage:
-		err = m.forwarding.Send(m.self, msg)
+	case []byte:
+		err = m.sendMessage(websocket.BinaryMessage, msg)
+	case string:
+		err = m.sendMessage(websocket.TextMessage, []byte(msg))
 	// Change forwarding actor
 	case *ChangeForwardingActor:
 		m.changeForwardingActor(msg.NextForwarder)
@@ -259,7 +269,7 @@ type ConnAcceptedAsk struct {
 
 type ConnAcceptedAnswer struct {
 	NextForwarder           actor.Ref
-	ForbiddenMessageType    int
+	ForbiddenMessageType    int		// BinaryMessage,TextMessage
 	ForbiddenMessageContent []byte
 }
 
@@ -293,23 +303,23 @@ type ChangeForwardingActor struct {
 // Send Message
 //
 
-type SendBytes struct {
-	Buffer []byte
-}
-
-type SendText struct {
-	Text string
-}
+//type SendBytes struct {
+//	Buffer []byte
+//}
+//
+//type SendText struct {
+//	Text string
+//}
 
 //
 // Read Message
 //
 
-type ReceiveMessage struct {
-	MessageType int
-	Buffer      []byte
-	Error       error
-}
+//type ReceiveMessage struct {
+//	MessageType int
+//	Buffer      []byte
+//	Error       error
+//}
 
 type ReceiveClosed struct {
 }
