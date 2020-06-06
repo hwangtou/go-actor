@@ -94,11 +94,6 @@ func (m RemoteRef) Id() Id {
 	return m.id
 }
 
-func (m RemoteRef) Status() Status {
-	// todo
-	return Running
-}
-
 func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 	sendData := &DataContentType{}
 	switch obj := msg.(type) {
@@ -188,40 +183,21 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 		askData.Content = &DataContentType_Proto{
 			Proto: sendAny,
 		}
+	case bool:
+		askData.Type = DataType_Bool
+		askData.Content = &DataContentType_B{
+			B: obj,
+		}
+	case []byte:
+		askData.Type = DataType_Bytes
+		askData.Content = &DataContentType_Bs{
+			Bs: obj,
+		}
 	case string:
 		askData.Type = DataType_String
 		askData.Content = &DataContentType_Str{
 			Str: obj,
 		}
-	default:
-		return ErrRemoteRefAskType
-	}
-
-	answerData := &DataContentType{}
-	switch obj := answer.(type) {
-	case proto.Message:
-		sendAny, err := ptypes.MarshalAny(obj)
-		if err != nil {
-			return err
-		}
-		answerData.Type = DataType_ProtoBuf
-		answerData.Content = &DataContentType_Proto{
-			Proto: sendAny,
-		}
-	case *string:
-		answerData.Type = DataType_String
-		answerData.Content = &DataContentType_Str{
-			Str: *obj,
-		}
-	default:
-		return ErrRemoteRefAnswerType
-	}
-
-	// send request
-	senderId, senderName := uint32(0), ""
-	if sender != nil {
-		senderId = sender.Id().id
-		senderName = sender.Id().name
 	}
 	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CAskName,
