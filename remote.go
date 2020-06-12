@@ -90,6 +90,10 @@ type RemoteRef struct {
 	node *outNode // todo nil
 }
 
+func (m RemoteRef) Status() Status {
+	return Halt
+}
+
 func (m RemoteRef) Id() Id {
 	return m.id
 }
@@ -162,6 +166,117 @@ func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 	}
 }
 
+func interface2ContentType(data interface{}) (c *DataContentType, err error) {
+	c = &DataContentType{}
+	switch dat := data.(type) {
+	case proto.Message:
+		sendAny, err := ptypes.MarshalAny(dat)
+		if err != nil {
+			return
+		}
+		c.Type = DataType_ProtoBuf
+		c.Content = &DataContentType_Proto{
+			Proto: sendAny,
+		}
+		return
+	case bool:
+		c.Type = DataType_Bool
+		c.Content = &DataContentType_B{
+			B: dat,
+		}
+		return
+	case []byte:
+		c.Type = DataType_Bytes
+		c.Content = &DataContentType_Bs{
+			Bs: dat,
+		}
+		return
+	case string:
+		c.Type = DataType_String
+		c.Content = &DataContentType_Str{
+			Str: dat,
+		}
+		return
+	case int:
+		c.Type = DataType_Int
+		c.Content = &DataContentType_I64{
+			I64: int64(dat),
+		}
+		return
+	case int8:
+		c.Type = DataType_Int8
+		c.Content = &DataContentType_I64{
+			I64: int64(dat),
+		}
+		return
+	case int16:
+		c.Type = DataType_Int16
+		c.Content = &DataContentType_I64{
+			I64: int64(dat),
+		}
+		return
+	case int32:
+		c.Type = DataType_Int32
+		c.Content = &DataContentType_I64{
+			I64: int64(dat),
+		}
+		return
+	case int64:
+		c.Type = DataType_Int64
+		c.Content = &DataContentType_I64{
+			I64: dat,
+		}
+		return
+	case uint:
+		c.Type = DataType_UInt
+		c.Content = &DataContentType_U64{
+			U64: uint64(dat),
+		}
+		return
+	case uint8:
+		c.Type = DataType_UInt8
+		c.Content = &DataContentType_U64{
+			U64: uint64(dat),
+		}
+		return
+	case uint16:
+		c.Type = DataType_UInt16
+		c.Content = &DataContentType_U64{
+			U64: uint64(dat),
+		}
+		return
+	case uint32:
+		c.Type = DataType_UInt32
+		c.Content = &DataContentType_U64{
+			U64: uint64(dat),
+		}
+		return
+	case uint64:
+		c.Type = DataType_UInt64
+		c.Content = &DataContentType_U64{
+			U64: dat,
+		}
+		return
+	case float32:
+		c.Type = DataType_Float32
+		c.Content = &DataContentType_F64{
+			F64: float64(dat),
+		}
+		return
+	case float64:
+		c.Type = DataType_Float64
+		c.Content = &DataContentType_F64{
+			F64: dat,
+		}
+		return
+	}
+	//switch reflect.TypeOf(data).Kind() {
+	//case reflect.Slice:
+	//case reflect.Map:
+	//}
+	return c, errors.New("unsupported type")
+}
+
 // todo test answer type not pointer, answer non-struct type, struct contains slice and map
 func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 	//if t := reflect.TypeOf(answer); t == nil || t.Kind() != reflect.Ptr {
@@ -172,32 +287,17 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 		return ErrAnswerType
 	}
 
-	askData := &DataContentType{}
-	switch obj := ask.(type) {
-	case proto.Message:
-		sendAny, err := ptypes.MarshalAny(obj)
-		if err != nil {
-			return err
-		}
-		askData.Type = DataType_ProtoBuf
-		askData.Content = &DataContentType_Proto{
-			Proto: sendAny,
-		}
-	case bool:
-		askData.Type = DataType_Bool
-		askData.Content = &DataContentType_B{
-			B: obj,
-		}
-	case []byte:
-		askData.Type = DataType_Bytes
-		askData.Content = &DataContentType_Bs{
-			Bs: obj,
-		}
-	case string:
-		askData.Type = DataType_String
-		askData.Content = &DataContentType_Str{
-			Str: obj,
-		}
+	askData, err := interface2ContentType(ask)
+	if err != nil {
+		return err
+	}
+	answerData, err := interface2ContentType(answer)
+	if err != nil {
+		return err
+	}
+	senderId, senderName := uint32(0), ""
+	if sender != nil {
+		senderId, senderName = sender.Id().id, sender.Id().name
 	}
 	w, err := m.node.send(&ConnMessage{
 		Type: ControlType_CAskName,
