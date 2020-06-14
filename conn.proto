@@ -63,10 +63,10 @@ enum DataType {
     UInt64 = 13;
     Float32 = 14;
     Float64 = 15;
-    Complex64 = 16;
-    Complex128 = 17;
-    Slice = 18;
-    Map = 19;
+//    Complex64 = 16;
+//    Complex128 = 17;
+//    Slice = 18;
+//    Map = 19;
 }
 
 message DataContentType {

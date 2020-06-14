@@ -29,9 +29,7 @@ func (m *Dialer) Started() {
 }
 
 func (m *Dialer) HandleSend(sender actor.Ref, message interface{}) {
-	switch msg := message.(type) {
-	case *ReceiveMessage:
-		log.Println("websocket dialer receive a message:", string(msg.Buffer), msg.Error)
+	switch message.(type) {
 	case *ReceiveClosed:
 		log.Println("websocket dialer receive closed")
 	}

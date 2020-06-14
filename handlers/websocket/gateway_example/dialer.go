@@ -144,15 +144,7 @@ func (m *connForwarder) Started() {
 }
 
 func (m *connForwarder) HandleSend(sender actor.Ref, message interface{}) {
-	switch msg := message.(type) {
-	case string:
-		if err := m.connRef.Send(m.self, &websocket.SendText{
-			Text: msg,
-		}); err != nil {
-			fmt.Println("Sending message error, ", err)
-		}
-	case *websocket.ReceiveMessage:
-		fmt.Println("Received message: ", string(msg.Buffer))
+	switch message.(type) {
 	case *websocket.ReceiveClosed:
 		fmt.Println("Received closed")
 	}

@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	//getNameTimeout = 3 * time.Second
 	requestTimeout = 5 * time.Second
 )
 
@@ -168,120 +167,155 @@ func (m *RemoteRef) Send(sender Ref, msg interface{}) error {
 
 func interface2ContentType(data interface{}) (c *DataContentType, err error) {
 	c = &DataContentType{}
-	switch dat := data.(type) {
+	d := data
+	if reflect.ValueOf(data).Kind() == reflect.Ptr {
+		d = reflect.ValueOf(data).Elem().Interface()
+	}
+	switch dat := d.(type) {
 	case proto.Message:
 		sendAny, err := ptypes.MarshalAny(dat)
 		if err != nil {
-			return
+			return nil, err
 		}
 		c.Type = DataType_ProtoBuf
 		c.Content = &DataContentType_Proto{
 			Proto: sendAny,
 		}
-		return
 	case bool:
 		c.Type = DataType_Bool
 		c.Content = &DataContentType_B{
 			B: dat,
 		}
-		return
 	case []byte:
 		c.Type = DataType_Bytes
 		c.Content = &DataContentType_Bs{
 			Bs: dat,
 		}
-		return
 	case string:
 		c.Type = DataType_String
 		c.Content = &DataContentType_Str{
 			Str: dat,
 		}
-		return
 	case int:
 		c.Type = DataType_Int
 		c.Content = &DataContentType_I64{
 			I64: int64(dat),
 		}
-		return
 	case int8:
 		c.Type = DataType_Int8
 		c.Content = &DataContentType_I64{
 			I64: int64(dat),
 		}
-		return
 	case int16:
 		c.Type = DataType_Int16
 		c.Content = &DataContentType_I64{
 			I64: int64(dat),
 		}
-		return
 	case int32:
 		c.Type = DataType_Int32
 		c.Content = &DataContentType_I64{
 			I64: int64(dat),
 		}
-		return
 	case int64:
 		c.Type = DataType_Int64
 		c.Content = &DataContentType_I64{
 			I64: dat,
 		}
-		return
 	case uint:
 		c.Type = DataType_UInt
 		c.Content = &DataContentType_U64{
 			U64: uint64(dat),
 		}
-		return
 	case uint8:
 		c.Type = DataType_UInt8
 		c.Content = &DataContentType_U64{
 			U64: uint64(dat),
 		}
-		return
 	case uint16:
 		c.Type = DataType_UInt16
 		c.Content = &DataContentType_U64{
 			U64: uint64(dat),
 		}
-		return
 	case uint32:
 		c.Type = DataType_UInt32
 		c.Content = &DataContentType_U64{
 			U64: uint64(dat),
 		}
-		return
 	case uint64:
 		c.Type = DataType_UInt64
 		c.Content = &DataContentType_U64{
 			U64: dat,
 		}
-		return
 	case float32:
 		c.Type = DataType_Float32
 		c.Content = &DataContentType_F64{
 			F64: float64(dat),
 		}
-		return
 	case float64:
 		c.Type = DataType_Float64
 		c.Content = &DataContentType_F64{
 			F64: dat,
 		}
-		return
 	}
-	//switch reflect.TypeOf(data).Kind() {
-	//case reflect.Slice:
-	//case reflect.Map:
-	//}
 	return c, errors.New("unsupported type")
+}
+
+func contentType2Interface(c *DataContentType, val reflect.Value) (err error) {
+	switch c.Type {
+	case DataType_ProtoBuf:
+		pb := c.GetProto()
+		err = ptypes.UnmarshalAny(c.GetProto(), pb)
+		if err != nil {
+			return err
+		}
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(pb).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().Set(reflect.ValueOf(pb))
+	case DataType_Bool:
+		b := c.GetB()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(b).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetBool(b)
+	case DataType_Bytes:
+		bs := c.GetBs()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(bs).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetBytes(bs)
+	case DataType_String:
+		s := c.GetStr()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(s).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetString(s)
+	case DataType_Int, DataType_Int8, DataType_Int16, DataType_Int32, DataType_Int64:
+		i := c.GetI64()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(i).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetInt(i)
+	case DataType_UInt, DataType_UInt8, DataType_UInt16, DataType_UInt32, DataType_UInt64:
+		u := c.GetU64()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(u).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetUint(u)
+	case DataType_Float32, DataType_Float64:
+		f := c.GetF64()
+		if !val.Elem().Type().AssignableTo(reflect.ValueOf(f).Type()) {
+			return ErrRemoteRefAnswerType
+		}
+		val.Elem().SetFloat(f)
+	default:
+		err = ErrRemoteRefAnswerType
+	}
+	return
 }
 
 // todo test answer type not pointer, answer non-struct type, struct contains slice and map
 func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
-	//if t := reflect.TypeOf(answer); t == nil || t.Kind() != reflect.Ptr {
-	//	return ErrRemoteRefAnswerType
-	//}
 	answerValue := reflect.ValueOf(answer)
 	if answerValue.Kind() != reflect.Ptr {
 		return ErrAnswerType
@@ -332,25 +366,7 @@ func (m *RemoteRef) Ask(sender Ref, ask interface{}, answer interface{}) error {
 				respErr = errors.New(resp.ErrorMessage)
 			}
 			if resp.AnswerData != nil {
-				switch resp.AnswerData.Type {
-				case DataType_ProtoBuf:
-					answerProto := resp.AnswerData.GetProto()
-					err = ptypes.UnmarshalAny(resp.AnswerData.GetProto(), answerProto)
-					if err != nil {
-						return err
-					}
-					if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(answerProto).Type()) {
-						return ErrRemoteRefAnswerType
-					}
-					answerValue.Elem().Set(reflect.ValueOf(answerProto))
-				case DataType_String:
-					answerString := resp.AnswerData.GetStr()
-					if !answerValue.Elem().Type().AssignableTo(reflect.ValueOf(answerString).Type()) {
-						return ErrRemoteRefAnswerType
-					}
-					answerValue.Elem().SetString(answerString)
-				default:
-				}
+				respErr = contentType2Interface(resp.AnswerData, answerValue)
 			}
 			return respErr
 		}
